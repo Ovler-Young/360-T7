@@ -10,7 +10,7 @@
 # See /LICENSE for more information.
 #
 
-name: Build immortalwrt24.10-6.6 360T7 Latest Passwall+Sing-box
+name: Build immortalwrt24.10-6.6 360T7 Sing-box
 
 on:
   repository_dispatch:
@@ -20,10 +20,10 @@ env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-24.10
   REPO_BRANCH: openwrt-24.10-6.6
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 2410-6.6-360t7-passwall-sing-box.config
+  CONFIG_FILE: 2410-6.6-360t7-sing-box.config
   DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: 2410-6.6-diy-part2-6-1-pw.sh
-  RELEASE_FILE: 2410-6.6-pw-release.txt  
+  DIY_P2_SH: 2410-diy-part2.sh
+  RELEASE_FILE: release.txt  
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
   UPLOAD_RELEASE: true
@@ -77,15 +77,6 @@ jobs:
       run: |
         cd openwrt
         ./scripts/feeds install -a 
-        
-        # 移除 openwrt feeds 自带的核心库
-        rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
-        git clone https://github.com/Openwrt-Passwall/openwrt-passwall-packages package/passwall-packages
-
-        # 移除 openwrt feeds 过时的luci版本
-        rm -rf feeds/luci/applications/luci-app-passwall
-        git clone https://github.com/Openwrt-Passwall/openwrt-passwall package/passwall-luci
-        
          
     - name: Load custom configuration
       run: |
