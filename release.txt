@@ -1,0 +1,5 @@
+237大佬源码编译路由器固件。
+immortalwrt23.05（闭源MTK驱动）主路由版。
+含最新passwall源码编译模块。还有ddns、vlmcsd模块。
+默认IP地址：192.168.6.1
+密码：password
