@@ -15,7 +15,8 @@ name: Build immortalwrt24.10-6.6 360T7
 on:
   repository_dispatch:
   workflow_dispatch:
-
+permissions:
+  contents: write 
 env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-24.10
   REPO_BRANCH: openwrt-24.10-6.6
@@ -26,7 +27,7 @@ env:
   RELEASE_FILE: release.txt  
   UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
+  UPLOAD_RELEASE: false
   TZ: America/New_York
 
 jobs:
