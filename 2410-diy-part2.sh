@@ -16,6 +16,10 @@ sed -i 's/192.168.1.1/192.168.10.1/g' package/base-files/files/bin/config_genera
 # Modify hostname
 sed -i 's/ImmortalWrt/ImmortalWrt-24.10-$(shell TZ="America/New_York" date +"%Y%m%d")/g' package/base-files/files/bin/config_generate
 
+# Modify theme
+sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
+
+
 # Modify filename, add date prefix
 sed -i 's|IMG_PREFIX:=|IMG_PREFIX:=$(shell TZ="America/New_York" date +"%Y%m%d")-24.10|' include/image.mk
 
