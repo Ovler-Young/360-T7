@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__deepwiki__ask_question",
+      "mcp__deepwiki__read_wiki_structure",
+      "Bash(git rebase:*)"
+    ]
+  }
+}

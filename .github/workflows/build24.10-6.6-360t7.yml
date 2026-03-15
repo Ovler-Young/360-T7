@@ -189,13 +189,6 @@ jobs:
         body_path: ${{ env.RELEASE_FILE }}
         files: ${{ env.FIRMWARE }}/*
 
-    - name: Delete workflow runs
-      continue-on-error: true
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        retain_days: 0
-        keep_minimum_runs: 2
-
     - name: Remove old Releases
       continue-on-error: true
       uses: dev-drprasad/delete-older-releases@master
