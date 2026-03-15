@@ -60,6 +60,7 @@ jobs:
         ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
 
     - name: Cache OpenWrt dl directory
+      continue-on-error: true
       uses: actions/cache@v4
       with:
         path: /workdir/openwrt/dl
@@ -68,6 +69,7 @@ jobs:
           openwrt-dl-
 
     - name: Cache toolchain and ccache
+      continue-on-error: true
       uses: klever1988/cachewrtbuild@main
       with:
         ccache: 'true'
@@ -126,16 +128,19 @@ jobs:
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
     - name: Clean unused dl packages
+      continue-on-error: true
       if: steps.compile.outputs.status == 'success'
       run: |
-        comm -23 <(ls /workdir/openwrt/dl/ | sort) /tmp/dl_needed.txt | xargs -I{} rm -f "/workdir/openwrt/dl/{}"
+        comm -23 <(ls /workdir/openwrt/dl/ | sort) /tmp/dl_needed.txt | xargs -I{} rm -rf "/workdir/openwrt/dl/{}"
 
 
     - name: Check space usage
+      continue-on-error: true
       if: (!cancelled())
       run: df -hT
 
     - name: Upload bin directory
+      continue-on-error: true
       uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
@@ -152,6 +157,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
+      continue-on-error: true
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
@@ -159,6 +165,7 @@ jobs:
         path: ${{ env.FIRMWARE }}
 
     - name: Generate release tag
+      continue-on-error: true
       id: tag
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       run: |
@@ -172,6 +179,7 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
     
     - name: Upload firmware to release
+      continue-on-error: true
       uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
@@ -182,12 +190,14 @@ jobs:
         files: ${{ env.FIRMWARE }}/*
 
     - name: Delete workflow runs
+      continue-on-error: true
       uses: Mattraks/delete-workflow-runs@main
       with:
         retain_days: 0
         keep_minimum_runs: 2
 
     - name: Remove old Releases
+      continue-on-error: true
       uses: dev-drprasad/delete-older-releases@master
       if: env.UPLOAD_RELEASE == 'true' && !cancelled()
       with:
