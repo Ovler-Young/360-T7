@@ -76,7 +76,7 @@ jobs:
         toolchain: 'true'
         skip: 'true'
         prefix: '${{ github.workspace }}/openwrt'
-        mixkey: 'mediatek-filogic'
+        mixkey: 'mediatek-filogic-base'
 
     - name: Load custom feeds
       run: |
