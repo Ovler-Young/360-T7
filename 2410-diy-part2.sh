@@ -72,7 +72,7 @@ git clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community --bran
 mkdir -p package/luci-app-tailscale-community
 cp -r /tmp/luci-app-tailscale-community/luci-app-tailscale-community package/
 # Fix luci-app-tailscale-community recursive dependency (select + depends cycle)
-sed -i '/select PACKAGE_tailscale/d' package/luci-app-tailscale-community/Makefile
+sed -i 's/LUCI_DEPENDS:=+tailscale/LUCI_DEPENDS:=tailscale/' package/luci-app-tailscale-community/Makefile
 
 git clone https://github.com/GuNanOvO/openwrt-tailscale --branch=main --depth=1 /tmp/openwrt-tailscale
 mkdir -p package/tailscale-community
