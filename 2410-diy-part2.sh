@@ -83,13 +83,15 @@ sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
 
 # Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
 # Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
-git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome
+git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=master --depth=1 package/luci-app-adguardhome
 
 # Update sing-box and cloudflared in feeds
 pushd feeds/packages
 
 # sing-box: remove tailscale tag and update to latest release
-sed -i 's/,with_tailscale//' net/sing-box/Makefile
+# sing-box: remove tailscale support
+sed -i 's/,with_tailscale//g' net/sing-box/Makefile
+sed -i '/CONFIG_SING_BOX_TINY_BUILD_TAILSCALE/d' net/sing-box/Makefile
 
 singbox_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep -oP '"tag_name":\s*"v\K[^"]+')
 if [ -n "$singbox_version" ]; then
