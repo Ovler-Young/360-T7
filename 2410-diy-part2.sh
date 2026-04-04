@@ -68,7 +68,11 @@ OVERRIDE_EOF
 chmod +x "$OVERRIDE_SCRIPT"
 
 # Add tailscale-community
-git clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community --branch=master --depth=1 package/luci-app-tailscale-community
+git clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community --branch=master --depth=1 /tmp/luci-app-tailscale-community
+mkdir -p package/luci-app-tailscale-community
+cp -r /tmp/luci-app-tailscale-community/luci-app-tailscale-community package/
+# Fix luci-app-tailscale-community recursive dependency (select + depends cycle)
+sed -i '/select PACKAGE_tailscale/d' package/luci-app-tailscale-community/Makefile
 
 git clone https://github.com/GuNanOvO/openwrt-tailscale --branch=main --depth=1 /tmp/openwrt-tailscale
 mkdir -p package/tailscale-community
@@ -84,6 +88,8 @@ sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
 # Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
 # Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
 git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=master --depth=1 package/luci-app-adguardhome
+# Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
+sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
 
 # Update sing-box and cloudflared in feeds
 pushd feeds/packages
