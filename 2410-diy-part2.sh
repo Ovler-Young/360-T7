@@ -26,3 +26,6 @@ sed -i 's|IMG_PREFIX:=|IMG_PREFIX:=$(shell TZ="America/New_York" date +"%Y%m%d")
 # Insert lines before the last line in 99-default-settings-chinese. For Modify opkg url, change mt7981 to filogic
 sed -i '\|^exit 0$|i sed -i "s,mt7981,filogic,g" /etc/opkg/distfeeds.conf' \
     package/emortal/default-settings/files/99-default-settings-chinese
+
+# Add tailscale-community
+git -C package clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community package/luci-app-tailscale-community 
