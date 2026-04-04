@@ -14,7 +14,8 @@
 sed -i 's/192.168.6.1/192.168.10.1/g' package/base-files/files/bin/config_generate
 
 # Modify hostname
-sed -i 's/ImmortalWrt/ImmortalWrt-24.10-$(shell TZ="America/New_York" date +"%Y%m%d")/g' package/base-files/files/bin/config_generate
+BUILD_DATE=$(TZ="America/New_York" date +"%Y%m%d")
+sed -i "s/ImmortalWrt/ImmortalWrt-24.10-${BUILD_DATE}/g" package/base-files/files/bin/config_generate
 
 # Modify theme
 sed -i 's/luci-theme-material/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
@@ -67,18 +68,48 @@ OVERRIDE_EOF
 chmod +x "$OVERRIDE_SCRIPT"
 
 # Add tailscale-community
-# git -C package clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community package/luci-app-tailscale-community  --branch=master --depth=1
 git clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community --branch=master --depth=1 package/luci-app-tailscale-community
 
 git clone https://github.com/GuNanOvO/openwrt-tailscale --branch=main --depth=1 /tmp/openwrt-tailscale
+mkdir -p package/tailscale-community
 cp -r /tmp/openwrt-tailscale/package/tailscale/* package/tailscale-community/
 
 TAILSCALE_MK="package/tailscale-community/Makefile"
-
 sed -i '/^include \$(TOPDIR)\/rules.mk/a DISABLE_UPX:=1' "$TAILSCALE_MK"
-
 sed -i "s/(OpenWrt-UPX)/(OpenWrt)/" "$TAILSCALE_MK"
 sed -i 's/Zero config VPN (UPX Compressed)/Zero config VPN/' "$TAILSCALE_MK"
-
 sed -i '/mkdir -p.*bin\/packages.*base/d' "$TAILSCALE_MK"
 sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
+
+# Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
+# Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
+git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome
+
+# Update sing-box and cloudflared in feeds
+pushd feeds/packages
+
+# sing-box: remove tailscale tag and update to latest release
+sed -i 's/,with_tailscale//' net/sing-box/Makefile
+
+singbox_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep -oP '"tag_name":\s*"v\K[^"]+')
+if [ -n "$singbox_version" ]; then
+  sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$singbox_version/" net/sing-box/Makefile
+  sed -i "s/PKG_HASH:=.*/PKG_HASH:=skip/" net/sing-box/Makefile
+  sed -i 's/.*PKG_MIRROR_HASH.*/#&/' net/sing-box/Makefile
+  echo "==> sing-box updated to $singbox_version"
+else
+  echo "==> Failed to fetch sing-box version, skipping"
+fi
+
+# cloudflared: update to latest release (tag has no 'v' prefix)
+cloudflared_version=$(curl -s "https://api.github.com/repos/cloudflare/cloudflared/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+')
+if [ -n "$cloudflared_version" ]; then
+  sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$cloudflared_version/" net/cloudflared/Makefile
+  sed -i "s/PKG_HASH:=.*/PKG_HASH:=skip/" net/cloudflared/Makefile
+  sed -i 's/.*PKG_MIRROR_HASH.*/#&/' net/cloudflared/Makefile
+  echo "==> cloudflared updated to $cloudflared_version"
+else
+  echo "==> Failed to fetch cloudflared version, skipping"
+fi
+
+popd
