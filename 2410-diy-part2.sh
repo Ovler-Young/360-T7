@@ -67,4 +67,18 @@ OVERRIDE_EOF
 chmod +x "$OVERRIDE_SCRIPT"
 
 # Add tailscale-community
-git -C package clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community package/luci-app-tailscale-community 
+# git -C package clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community package/luci-app-tailscale-community  --branch=master --depth=1
+git clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community --branch=master --depth=1 package/luci-app-tailscale-community
+
+git clone https://github.com/GuNanOvO/openwrt-tailscale --branch=main --depth=1 /tmp/openwrt-tailscale
+cp -r /tmp/openwrt-tailscale/package/tailscale/* package/tailscale-community/
+
+TAILSCALE_MK="package/tailscale-community/Makefile"
+
+sed -i '/^include \$(TOPDIR)\/rules.mk/a DISABLE_UPX:=1' "$TAILSCALE_MK"
+
+sed -i "s/(OpenWrt-UPX)/(OpenWrt)/" "$TAILSCALE_MK"
+sed -i 's/Zero config VPN (UPX Compressed)/Zero config VPN/' "$TAILSCALE_MK"
+
+sed -i '/mkdir -p.*bin\/packages.*base/d' "$TAILSCALE_MK"
+sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
