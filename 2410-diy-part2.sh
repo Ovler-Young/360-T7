@@ -101,25 +101,67 @@ sed -i 's/Zero config VPN (UPX Compressed)/Zero config VPN/' "$TAILSCALE_MK"
 sed -i '/mkdir -p.*bin\/packages.*base/d' "$TAILSCALE_MK"
 sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
 
-# Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
+# Add luci-app-adguardhome (nft version)
 # Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
-git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=master --depth=1 package/luci-app-adguardhome
+git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome || exit 1
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
 
-# Update selected Go applications to the latest verified stable releases.
-# Hashes are SHA-256 of the corresponding GitHub codeload source archives.
-# Keep the source integrity check enabled and use the Go 1.27.3 toolchain.
+# Update sing-box and cloudflared in feeds
 pushd feeds/packages
 
-# Drop the deprecated sing-box embedded Tailscale feature.
+# sing-box: exclude embedded Tailscale to avoid duplicating our standalone tailscale binary
 sed -i 's/,with_tailscale//g' net/sing-box/Makefile
 sed -i '/CONFIG_SING_BOX_TINY_BUILD_TAILSCALE/d' net/sing-box/Makefile
 
-sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1.14.4/' net/sing-box/Makefile
-sed -i 's/^PKG_HASH:=.*/PKG_HASH:=0958ccd23b1ea9a141d715d15478b1e040fd04bcca19d8ff5529636b1b753e18/' net/sing-box/Makefile
+# Fetch each latest stable tag and calculate the matching source hash at build time.
+update_release_package() {
+  local pkg="$1" repo="$2" mk="net/$1/Makefile"
+  local tag version archive hash
 
-sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=2026.10.7/' net/cloudflared/Makefile
-sed -i 's/^PKG_HASH:=.*/PKG_HASH:=d268031cb8906675b6b6353f18a007e6fc028f170094c5ac9220493bc8147016/' net/cloudflared/Makefile
+  if [ ! -f "$mk" ] || ! grep -Fq "https://codeload.github.com/$repo/tar.gz/" "$mk"; then
+    echo "Unexpected source URL for $pkg: $mk" >&2
+    return 1
+  fi
+
+  tag=$(curl -fsSL --retry 3 "https://api.github.com/repos/$repo/releases/latest" \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])') || return 1
+  if [[ ! "$tag" =~ ^v?[0-9][0-9A-Za-z._-]*$ ]]; then
+    echo "Invalid release tag for $pkg: $tag" >&2
+    return 1
+  fi
+  version="${tag#v}"
+
+  archive=$(mktemp) || return 1
+  if ! curl -fsSL --retry 3 "https://codeload.github.com/$repo/tar.gz/$tag?" -o "$archive"; then
+    rm -f "$archive"
+    return 1
+  fi
+  if ! tar -tzf "$archive" >/dev/null; then
+    rm -f "$archive"
+    return 1
+  fi
+  hash=$(sha256sum "$archive") || { rm -f "$archive"; return 1; }
+  hash="${hash%% *}"
+  rm -f "$archive"
+  if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Invalid source hash for $pkg" >&2
+    return 1
+  fi
+
+  sed -i \
+    -e "s/^PKG_VERSION:=.*/PKG_VERSION:=$version/" \
+    -e "s/^PKG_HASH:=.*/PKG_HASH:=$hash/" "$mk" || return 1
+  grep -qx "PKG_VERSION:=$version" "$mk" && \
+    grep -qx "PKG_HASH:=$hash" "$mk" || return 1
+  echo "==> $pkg updated to $version (SHA-256: $hash)"
+}
+
+update_release_package sing-box SagerNet/sing-box || exit 1
+update_release_package cloudflared cloudflare/cloudflared || exit 1
 
 popd
+
+if grep -qx 'CONFIG_PACKAGE_adguardhome-core=y' .config; then
+  python3 "$GITHUB_WORKSPACE/scripts/prepare-adguardhome-core.py" || exit 1
+fi

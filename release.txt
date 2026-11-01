@@ -2,7 +2,9 @@
 
 Upstream: padavanonly/immortalwrt-mt798x-24.10, branch openwrt-24.10-6.6
 Includes the upstream April 2026 HNAT cache-control fix and later PPE updates.
-Full build: Go 1.27.3; sing-box 1.14.4; cloudflared 2026.10.7; Tailscale provided by the current GuNanOvO feed. Other packages use the latest compatible 24.10 feed revisions available at build time.
+Full build: sing-box and cloudflared resolve their latest stable releases and source SHA-256 hashes at build time; Tailscale uses the current GuNanOvO recipe. The public AdGuard Home ARM64 binary is packaged separately from its LuCI-managed service, with its release digest verified at build time. Other packages use the current compatible 24.10 feeds.
+
+The full image also includes ndppd, mdns-repeater, smcroute, avahi-dbus-daemon, openssh-sftp-server, librespeed-cli-rust and bash. Site-specific service scripts and configuration require a separate backup before upgrading.
 
 Default LAN IP on a clean installation: 192.168.10.1.
 Upgrade from a different release: back up settings, verify the exact qihoo_360t7 sysupgrade image, and consider not preserving settings to avoid incompatible configuration.
