@@ -10,10 +10,6 @@
 # See /LICENSE for more information.
 #
 
-# Only reapply MediaTek SMP/RPS configuration when an interface actually
-# goes up or down. Prefix/address-only ifupdate events must not restart it.
-# Upstream's unconditional iface hotplug restart causes an event storm on
-# DHCPv6 prefix updates.
 SMP_HOTPLUG="target/linux/mediatek/filogic/base-files/etc/hotplug.d/iface/30-ext-devices-rps-setting"
 if [ ! -f "$SMP_HOTPLUG" ]; then
   echo "Missing upstream MediaTek SMP iface hotplug script" >&2
@@ -101,20 +97,22 @@ sed -i 's/Zero config VPN (UPX Compressed)/Zero config VPN/' "$TAILSCALE_MK"
 sed -i '/mkdir -p.*bin\/packages.*base/d' "$TAILSCALE_MK"
 sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
 
-# Add luci-app-adguardhome (nft version)
+# Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
 # Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
 git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome || exit 1
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
+install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
+  package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
 
 # Update sing-box and cloudflared in feeds
 pushd feeds/packages
 
-# sing-box: exclude embedded Tailscale to avoid duplicating our standalone tailscale binary
+# sing-box: remove tailscale tag and update to latest release
+# sing-box: remove tailscale support
 sed -i 's/,with_tailscale//g' net/sing-box/Makefile
 sed -i '/CONFIG_SING_BOX_TINY_BUILD_TAILSCALE/d' net/sing-box/Makefile
 
-# Fetch each latest stable tag and calculate the matching source hash at build time.
 update_release_package() {
   local pkg="$1" repo="$2" mk="net/$1/Makefile"
   local tag version archive hash
@@ -158,6 +156,7 @@ update_release_package() {
 }
 
 update_release_package sing-box SagerNet/sing-box || exit 1
+# cloudflared: update to latest release (tag has no 'v' prefix)
 update_release_package cloudflared cloudflare/cloudflared || exit 1
 
 popd

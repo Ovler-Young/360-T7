@@ -36,7 +36,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@main
 
     - name: Initialization environment
       env:
@@ -144,7 +144,7 @@ jobs:
 
     - name: Upload bin directory
       continue-on-error: true
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -161,7 +161,7 @@ jobs:
 
     - name: Upload firmware directory
       continue-on-error: true
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}

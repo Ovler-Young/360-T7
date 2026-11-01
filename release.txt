@@ -1,11 +1,5 @@
-360T7 — ImmortalWrt 24.10 (Linux 6.6, MediaTek MT7981)
-
-Upstream: padavanonly/immortalwrt-mt798x-24.10, branch openwrt-24.10-6.6
-Includes the upstream April 2026 HNAT cache-control fix and later PPE updates.
-Full build: sing-box and cloudflared resolve their latest stable releases and source SHA-256 hashes at build time; Tailscale uses the current GuNanOvO recipe. The public AdGuard Home ARM64 binary is packaged separately from its LuCI-managed service, with its release digest verified at build time. Other packages use the current compatible 24.10 feeds.
-
-The full image also includes ndppd, mdns-repeater, smcroute, avahi-dbus-daemon, openssh-sftp-server, librespeed-cli-rust and bash. Site-specific service scripts and configuration require a separate backup before upgrading.
-
-Default LAN IP on a clean installation: 192.168.10.1.
-Upgrade from a different release: back up settings, verify the exact qihoo_360t7 sysupgrade image, and consider not preserving settings to avoid incompatible configuration.
-After flashing, verify HNAT, the mtk_smp hotplug fix, Wi-Fi stability, and LAN throughput before re-enabling proxy workloads.
+237大佬源码编译路由器固件。
+immortalwrt24.10（闭源MTK驱动）主路由版。
+含有ddns、vlmcsd模块。
+默认IP地址：192.168.10.1
+密码：password
