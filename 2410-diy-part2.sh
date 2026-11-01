@@ -10,6 +10,22 @@
 # See /LICENSE for more information.
 #
 
+# Only reapply MediaTek SMP/RPS configuration when an interface actually
+# goes up or down. Prefix/address-only ifupdate events must not restart it.
+# Upstream's unconditional iface hotplug restart causes an event storm on
+# DHCPv6 prefix updates.
+SMP_HOTPLUG="target/linux/mediatek/filogic/base-files/etc/hotplug.d/iface/30-ext-devices-rps-setting"
+if [ ! -f "$SMP_HOTPLUG" ]; then
+  echo "Missing upstream MediaTek SMP iface hotplug script" >&2
+  exit 1
+fi
+sed -i '/^NPROCS=/i\
+case "$ACTION" in\
+  ifup|ifdown) ;;\
+  *) exit 0 ;;\
+esac\
+' "$SMP_HOTPLUG"
+
 # Modify default IP
 sed -i 's/192.168.6.1/192.168.10.1/g' package/base-files/files/bin/config_generate
 
@@ -91,33 +107,19 @@ git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=master -
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
 
-# Update sing-box and cloudflared in feeds
+# Update selected Go applications to the latest verified stable releases.
+# Hashes are SHA-256 of the corresponding GitHub codeload source archives.
+# Keep the source integrity check enabled and use the Go 1.27.3 toolchain.
 pushd feeds/packages
 
-# sing-box: remove tailscale tag and update to latest release
-# sing-box: remove tailscale support
+# Drop the deprecated sing-box embedded Tailscale feature.
 sed -i 's/,with_tailscale//g' net/sing-box/Makefile
 sed -i '/CONFIG_SING_BOX_TINY_BUILD_TAILSCALE/d' net/sing-box/Makefile
 
-singbox_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep -oP '"tag_name":\s*"v\K[^"]+')
-if [ -n "$singbox_version" ]; then
-  sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$singbox_version/" net/sing-box/Makefile
-  sed -i "s/PKG_HASH:=.*/PKG_HASH:=skip/" net/sing-box/Makefile
-  sed -i 's/.*PKG_MIRROR_HASH.*/#&/' net/sing-box/Makefile
-  echo "==> sing-box updated to $singbox_version"
-else
-  echo "==> Failed to fetch sing-box version, skipping"
-fi
+sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=1.14.4/' net/sing-box/Makefile
+sed -i 's/^PKG_HASH:=.*/PKG_HASH:=0958ccd23b1ea9a141d715d15478b1e040fd04bcca19d8ff5529636b1b753e18/' net/sing-box/Makefile
 
-# cloudflared: update to latest release (tag has no 'v' prefix)
-cloudflared_version=$(curl -s "https://api.github.com/repos/cloudflare/cloudflared/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+')
-if [ -n "$cloudflared_version" ]; then
-  sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$cloudflared_version/" net/cloudflared/Makefile
-  sed -i "s/PKG_HASH:=.*/PKG_HASH:=skip/" net/cloudflared/Makefile
-  sed -i 's/.*PKG_MIRROR_HASH.*/#&/' net/cloudflared/Makefile
-  echo "==> cloudflared updated to $cloudflared_version"
-else
-  echo "==> Failed to fetch cloudflared version, skipping"
-fi
+sed -i 's/^PKG_VERSION:=.*/PKG_VERSION:=2026.10.7/' net/cloudflared/Makefile
+sed -i 's/^PKG_HASH:=.*/PKG_HASH:=d268031cb8906675b6b6353f18a007e6fc028f170094c5ac9220493bc8147016/' net/cloudflared/Makefile
 
 popd

@@ -36,7 +36,7 @@ jobs:
 
     steps:
     - name: Checkout
-      uses: actions/checkout@main
+      uses: actions/checkout@v4
 
     - name: Initialization environment
       env:
@@ -76,7 +76,7 @@ jobs:
         toolchain: 'true'
         skip: 'true'
         prefix: '${{ github.workspace }}/openwrt'
-        mixkey: 'mediatek-filogic'
+        mixkey: 'mediatek-filogic-go127'
 
     - name: Load custom feeds
       run: |
@@ -90,7 +90,7 @@ jobs:
          cd openwrt
          ./scripts/feeds update -a
          rm -rf feeds/packages/lang/golang
-         git clone https://github.com/kenzok8/golang -b 1.26 feeds/packages/lang/golang
+         git clone --depth=1 -b 1.27 https://github.com/kenzok8/golang feeds/packages/lang/golang
 
 
     - name: Install feeds
@@ -141,7 +141,7 @@ jobs:
 
     - name: Upload bin directory
       continue-on-error: true
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v4
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
@@ -158,7 +158,7 @@ jobs:
 
     - name: Upload firmware directory
       continue-on-error: true
-      uses: actions/upload-artifact@main
+      uses: actions/upload-artifact@v4
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}

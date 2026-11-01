@@ -1,5 +1,9 @@
-237大佬源码编译路由器固件。
-immortalwrt23.05（闭源MTK驱动）主路由版。
-含有ddns、vlmcsd模块。
-默认IP地址：192.168.6.1
-密码：password
+360T7 — ImmortalWrt 24.10 (Linux 6.6, MediaTek MT7981)
+
+Upstream: padavanonly/immortalwrt-mt798x-24.10, branch openwrt-24.10-6.6
+Includes the upstream April 2026 HNAT cache-control fix and later PPE updates.
+Full build: Go 1.27.3; sing-box 1.14.4; cloudflared 2026.10.7; Tailscale provided by the current GuNanOvO feed. Other packages use the latest compatible 24.10 feed revisions available at build time.
+
+Default LAN IP on a clean installation: 192.168.10.1.
+Upgrade from a different release: back up settings, verify the exact qihoo_360t7 sysupgrade image, and consider not preserving settings to avoid incompatible configuration.
+After flashing, verify HNAT, the mtk_smp hotplug fix, Wi-Fi stability, and LAN throughput before re-enabling proxy workloads.
