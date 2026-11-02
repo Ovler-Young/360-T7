@@ -20,7 +20,7 @@ env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
   REPO_BRANCH: v25.12.2
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 2410-6.6-360t7.config
+  CONFIG_FILE: 2512-360t7.config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: 2512-diy-part2.sh
   RELEASE_FILE: release.txt  
@@ -63,7 +63,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /workdir/openwrt/dl
-        key: openwrt-dl-${{ hashFiles('diy-part1.sh', '2410-diy-part2.sh') }}
+        key: openwrt-dl-${{ hashFiles('diy-part1.sh', '2512-diy-part2.sh', '2512-360t7.config') }}
         restore-keys: |
           openwrt-dl-
 
@@ -109,10 +109,16 @@ jobs:
       id: package
       run: |
         cd openwrt
+        # Save explicit package intent before Kconfig can discard unavailable symbols.
+        sed -n 's/^CONFIG_PACKAGE_\(.*\)=y$/\1/p' .config | \
+          grep -vE '^(dnsmasq_full_|TAR_)' > required-packages.txt
+        test -s required-packages.txt
         make defconfig
-        for pkg in adguardhome-core luci-app-adguardhome ndppd mdns-repeater smcroute avahi-dbus-daemon openssh-sftp-server bash kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware apk-openssl; do
-          grep -qx "CONFIG_PACKAGE_${pkg}=y" .config || { echo "Required package missing: $pkg" >&2; exit 1; }
+        missing=0
+        for pkg in $(cat required-packages.txt); do
+          grep -qx "CONFIG_PACKAGE_${pkg}=y" .config || { echo "Required package missing: $pkg" >&2; missing=1; }
         done
+        test "$missing" -eq 0
         ! grep -qx 'CONFIG_PACKAGE_librespeed-cli-rust=y' .config || { echo 'Unexpected Rust LibreSpeed package' >&2; exit 1; }
         ! grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config || { echo 'Unexpected proprietary MTK Wi-Fi driver' >&2; exit 1; }
         make download -j8
@@ -163,7 +169,7 @@ jobs:
         done
         manifest=$(find . -maxdepth 1 -name '*filogic.manifest' -print -quit)
         test -s "$manifest" || { echo 'Missing nonempty target package manifest' >&2; exit 1; }
-        for pkg in adguardhome-core luci-app-adguardhome ndppd mdns-repeater smcroute avahi-dbus-daemon openssh-sftp-server bash kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware apk-openssl; do
+        for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
           grep -q "^${pkg} " "$manifest" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
         done
         sha256sum -c sha256sums --ignore-missing
