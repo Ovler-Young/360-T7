@@ -113,7 +113,7 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        for pkg in adguardhome-core ndppd mdns-repeater smcroute avahi-dbus-daemon openssh-sftp-server librespeed-cli-rust bash; do
+        for pkg in adguardhome-core ndppd mdns-repeater smcroute avahi-dbus-daemon openssh-sftp-server bash; do
           grep -qx "CONFIG_PACKAGE_${pkg}=y" .config || { echo "Required package missing: $pkg" >&2; exit 1; }
         done
         make download -j8
