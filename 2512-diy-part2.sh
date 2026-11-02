@@ -10,6 +10,9 @@
 # See /LICENSE for more information.
 #
 
+set -e
+set -o pipefail
+
 SMP_HOTPLUG="target/linux/mediatek/filogic/base-files/etc/hotplug.d/iface/30-ext-devices-rps-setting"
 if [ -f "$SMP_HOTPLUG" ]; then
   sed -i '/^NPROCS=/i\
@@ -90,19 +93,9 @@ chmod +x "$OVERRIDE_SCRIPT"
 git clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community --branch=master --depth=1 /tmp/luci-app-tailscale-community
 mkdir -p package/luci-app-tailscale-community
 cp -r /tmp/luci-app-tailscale-community/luci-app-tailscale-community package/
-# Fix luci-app-tailscale-community recursive dependency (select + depends cycle)
-sed -i 's/LUCI_DEPENDS:=+tailscale/LUCI_DEPENDS:=tailscale/' package/luci-app-tailscale-community/Makefile
-
-git clone https://github.com/GuNanOvO/openwrt-tailscale --branch=main --depth=1 /tmp/openwrt-tailscale
-mkdir -p package/tailscale-community
-cp -r /tmp/openwrt-tailscale/package/tailscale/* package/tailscale-community/
-
-TAILSCALE_MK="package/tailscale-community/Makefile"
-sed -i '/^include \$(TOPDIR)\/rules.mk/a DISABLE_UPX:=1' "$TAILSCALE_MK"
-sed -i "s/(OpenWrt-UPX)/(OpenWrt)/" "$TAILSCALE_MK"
-sed -i 's/Zero config VPN (UPX Compressed)/Zero config VPN/' "$TAILSCALE_MK"
-sed -i '/mkdir -p.*bin\/packages.*base/d' "$TAILSCALE_MK"
-sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
+# Use the official source-built core with its matching Go toolchain.
+# Its service supports the same state, port, nftables and logging settings.
+./scripts/feeds install tailscale
 
 # Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
 # Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
