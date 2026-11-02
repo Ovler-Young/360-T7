@@ -15,6 +15,11 @@ name: Build ImmortalWrt 25.12.2 360T7 (experimental)
 
 on:
   workflow_dispatch:
+  # Until merged into the default branch, use a branch-scoped push to test
+  # this independent experimental workflow without invoking the 24.10 job.
+  push:
+    branches:
+      - feat/immortalwrt-25.12-360t7
 permissions:
   contents: read
 env:
@@ -182,10 +187,10 @@ jobs:
         awk -v image="$image" '$2 == image || $2 == "*" image { print }' sha256sums > "$artifact/sha256sums"
         test "$(wc -l < "$artifact/sha256sums")" -eq 1
         sha256sum --strict -c "$artifact/sha256sums"
-        manifests=(*filogic.manifest)
-        test "${#manifests[@]}" -eq 1
-        manifest="${manifests[0]}"
-        test -s "$manifest"
+        # include/image.mk Image/Manifest uses IMG_PREFIX plus PROFILE_SANITIZED;
+        # match the validated device FIT image, not a target-wide *filogic.manifest.
+        manifest="${image%-squashfs-sysupgrade.itb}.manifest"
+        test -s "$manifest" || { echo "Missing matching device manifest: $manifest" >&2; exit 1; }
         for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
           awk -v pkg="$pkg" '$1 == pkg { found=1 } END { exit !found }' "$manifest" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
         done
