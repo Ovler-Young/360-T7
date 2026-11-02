@@ -136,9 +136,19 @@ jobs:
         go_patch=$(sed -n 's/^GO_VERSION_PATCH:=//p' feeds/packages/lang/golang/golang1.27/Makefile)
         [[ "$go_patch" =~ ^[0-9]+$ ]] || { echo 'Missing Go 1.27 patch version' >&2; exit 1; }
         strings -a "$adguard_binary" | grep -Fx "go1.27.$go_patch" > /dev/null || { echo 'AdGuard Home was not built with the selected Go 1.27 compiler' >&2; exit 1; }
-        test -s staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/etc/uci-defaults/90-adguardhome-legacy-config || { echo 'Missing AdGuardHome legacy migration script in image root' >&2; exit 1; }
-        test -x staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/etc/uci-defaults/99z-default-settings-us
-        cmp files/etc/uci-defaults/99z-default-settings-us staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/etc/uci-defaults/99z-default-settings-us
+        # The files/ overlay is applied during rootfs image creation, not to staging_dir/root-mediatek.
+        mapfile -d '' -t rootfs_images < <(find build_dir/target-*/linux-mediatek_filogic -maxdepth 1 -type f -name 'root.squashfs*' ! -name '*.pagesync' -print0)
+        per_device_rootfs=()
+        for candidate in "${rootfs_images[@]}"; do
+          [[ "$candidate" == *'+pkg='* ]] && per_device_rootfs+=("$candidate")
+        done
+        if test "${#per_device_rootfs[@]}" -gt 0; then rootfs_images=("${per_device_rootfs[@]}"); fi
+        test "${#rootfs_images[@]}" -eq 1 || { echo 'Expected one 360T7 squashfs rootfs to verify overlays' >&2; exit 1; }
+        rootfs="${rootfs_images[0]}"
+        test -s "$rootfs"
+        for script in 90-adguardhome-legacy-config 99z-default-settings-us; do
+          unsquashfs -cat "$rootfs" "etc/uci-defaults/$script" | cmp - "files/etc/uci-defaults/$script" || { echo "Missing or modified $script in built rootfs" >&2; exit 1; }
+        done
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
