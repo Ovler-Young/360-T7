@@ -106,6 +106,22 @@ sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makef
 install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
   package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
 
+# The MediaTek tree still points ndisc6 1.0.2 at an upstream URL returning HTTP 410.
+# Use the verified public 1.0.8 release; its libc already implements strverscmp.
+NDISC_MK=package/mtk/applications/ndisc/Makefile
+grep -qx 'PKG_VERSION:=1.0.2' "$NDISC_MK" || exit 1
+grep -qx 'PKG_SOURCE_URL:=http://www.remlab.net/files/ndisc6' "$NDISC_MK" || exit 1
+grep -qx 'PKG_MD5SUM:=50cb4c19606cf6ff2b7388e71832f579' "$NDISC_MK" || exit 1
+for patch in 100-favor_bsd.patch 110-strverscmp.patch; do
+  test -f "package/mtk/applications/ndisc/patches/$patch" || exit 1
+done
+sed -i \
+  -e 's/^PKG_VERSION:=1\.0\.2$/PKG_VERSION:=1.0.8/' \
+  -e 's#^PKG_SOURCE_URL:=http://www\.remlab\.net/files/ndisc6$#PKG_SOURCE_URL:=https://www.remlab.net/files/ndisc6#' \
+  -e 's/^PKG_MD5SUM:=50cb4c19606cf6ff2b7388e71832f579$/PKG_HASH:=1f2fb2dc1172770aa5a09d39738a44d8b753cc5e2e25e306ca78682f9fea0b4f/' \
+  "$NDISC_MK"
+rm package/mtk/applications/ndisc/patches/{100-favor_bsd,110-strverscmp}.patch
+
 # Update sing-box and cloudflared in feeds
 pushd feeds/packages
 
