@@ -106,8 +106,6 @@ sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makef
 install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft \
   package/luci-app-adguardhome/root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft || exit 1
 rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft || exit 1
-install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
-  package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
 
 # The MediaTek tree still points ndisc6 1.0.2 at an upstream URL returning HTTP 410.
 # Use the verified public 1.0.8 release; its libc already implements strverscmp.
