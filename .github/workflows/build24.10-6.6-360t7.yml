@@ -152,9 +152,15 @@ jobs:
 
     - name: Organize files
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
+      if: env.UPLOAD_FIRMWARE == 'true' && steps.compile.outputs.status == 'success'
       run: |
         cd openwrt/bin/targets/*/*
+        for image in *qihoo_360t7*squashfs-sysupgrade.bin; do
+          test -s "$image" || { echo "Missing or empty qihoo_360t7 sysupgrade image" >&2; exit 1; }
+          grep -Fq " $image" sha256sums || { echo "Missing image SHA-256 entry" >&2; exit 1; }
+        done
+        ls *qihoo_360t7.manifest >/dev/null
+        sha256sum -c sha256sums --ignore-missing
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
@@ -170,7 +176,7 @@ jobs:
     - name: Generate release tag
       continue-on-error: true
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: env.UPLOAD_RELEASE == 'true' && steps.organize.outputs.status == 'success'
       run: |
         echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
         touch "${RELEASE_FILE}"
@@ -195,7 +201,7 @@ jobs:
     - name: Remove old Releases
       continue-on-error: true
       uses: dev-drprasad/delete-older-releases@master
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: steps.tag.outputs.status == 'success'
       with:
         keep_latest: 12
         delete_tags: true

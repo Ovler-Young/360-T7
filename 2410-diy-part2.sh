@@ -100,6 +100,7 @@ sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
 # Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
 # Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
 git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome || exit 1
+rm -rf package/luci-app-adguardhome/patches
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
 install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
