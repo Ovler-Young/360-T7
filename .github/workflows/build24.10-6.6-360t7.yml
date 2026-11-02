@@ -10,24 +10,23 @@
 # See /LICENSE for more information.
 #
 
-name: Build immortalwrt24.10-6.6 360T7
+name: Build ImmortalWrt 25.12.2 360T7 (experimental)
 
 on:
-  repository_dispatch:
   workflow_dispatch:
 permissions:
   contents: write 
 env:
-  REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-24.10
-  REPO_BRANCH: openwrt-24.10-6.6
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: v25.12.2
   FEEDS_CONF: feeds.conf.default
   CONFIG_FILE: 2410-6.6-360t7.config
   DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: 2410-diy-part2.sh
+  DIY_P2_SH: 2512-diy-part2.sh
   RELEASE_FILE: release.txt  
-  UPLOAD_BIN_DIR: true
+  UPLOAD_BIN_DIR: false
   UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: true
+  UPLOAD_RELEASE: false
   TZ: America/New_York
 
 jobs:
@@ -76,7 +75,7 @@ jobs:
         toolchain: 'true'
         skip: 'true'
         prefix: '${{ github.workspace }}/openwrt'
-        mixkey: 'mediatek-filogic-go127'
+        mixkey: 'mediatek-filogic-2512'
 
     - name: Load custom feeds
       run: |
@@ -89,8 +88,6 @@ jobs:
       run: |
          cd openwrt
          ./scripts/feeds update -a
-         rm -rf feeds/packages/lang/golang
-         git clone --depth=1 -b 1.27 https://github.com/kenzok8/golang feeds/packages/lang/golang
 
 
     - name: Install feeds
@@ -113,9 +110,11 @@ jobs:
       run: |
         cd openwrt
         make defconfig
-        for pkg in adguardhome-core ndppd mdns-repeater smcroute avahi-dbus-daemon openssh-sftp-server bash; do
+        for pkg in adguardhome-core luci-app-adguardhome ndppd mdns-repeater smcroute avahi-dbus-daemon openssh-sftp-server bash kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware apk-openssl; do
           grep -qx "CONFIG_PACKAGE_${pkg}=y" .config || { echo "Required package missing: $pkg" >&2; exit 1; }
         done
+        ! grep -qx 'CONFIG_PACKAGE_librespeed-cli-rust=y' .config || { echo 'Unexpected Rust LibreSpeed package' >&2; exit 1; }
+        ! grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config || { echo 'Unexpected proprietary MTK Wi-Fi driver' >&2; exit 1; }
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
@@ -127,6 +126,7 @@ jobs:
         cd openwrt
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
+        test -s staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/etc/uci-defaults/90-adguardhome-legacy-config || { echo 'Missing AdGuardHome legacy migration script in image root' >&2; exit 1; }
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
@@ -157,18 +157,22 @@ jobs:
       if: env.UPLOAD_FIRMWARE == 'true' && steps.compile.outputs.status == 'success'
       run: |
         cd openwrt/bin/targets/*/*
-        for image in *qihoo_360t7*squashfs-sysupgrade.bin; do
-          test -s "$image" || { echo "Missing or empty qihoo_360t7 sysupgrade image" >&2; exit 1; }
+        for image in *qihoo_360t7-squashfs-sysupgrade.itb; do
+          test -s "$image" || { echo "Missing or empty official-layout qihoo_360t7 sysupgrade FIT image" >&2; exit 1; }
           grep -Fq " $image" sha256sums || { echo "Missing image SHA-256 entry" >&2; exit 1; }
         done
-        ls *qihoo_360t7.manifest >/dev/null
+        manifest=$(find . -maxdepth 1 -name '*filogic.manifest' -print -quit)
+        test -s "$manifest" || { echo 'Missing nonempty target package manifest' >&2; exit 1; }
+        for pkg in adguardhome-core luci-app-adguardhome ndppd mdns-repeater smcroute avahi-dbus-daemon openssh-sftp-server bash kmod-mt7915e kmod-mt7981-firmware mt7981-wo-firmware apk-openssl; do
+          grep -q "^${pkg} " "$manifest" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
+        done
         sha256sum -c sha256sums --ignore-missing
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
-      continue-on-error: true
+      continue-on-error: false
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
