@@ -103,6 +103,9 @@ git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --d
 rm -rf package/luci-app-adguardhome/patches
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
+install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft \
+  package/luci-app-adguardhome/root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft || exit 1
+rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft || exit 1
 install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
   package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
 
