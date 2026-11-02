@@ -1,43 +1,64 @@
 include $(TOPDIR)/rules.mk
-
-# Generated from the current public release during firmware preparation.
 include $(CURDIR)/release.mk
 
 PKG_NAME:=adguardhome-core
 PKG_RELEASE:=1
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION)-linux-arm64.tar.gz
-PKG_SOURCE_URL:=$(ADGUARDHOME_SOURCE_URL)
-PKG_SOURCE_URL_FILE:=AdGuardHome_linux_arm64.tar.gz
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://codeload.github.com/AdguardTeam/AdGuardHome/tar.gz/v$(PKG_VERSION)?
+PKG_BUILD_DIR:=$(BUILD_DIR)/AdGuardHome-$(PKG_VERSION)
+
+FRONTEND_DEST:=$(PKG_NAME)-frontend-$(PKG_VERSION).tar.gz
+FRONTEND_URL:=https://github.com/AdguardTeam/AdGuardHome/releases/download/v$(PKG_VERSION)/
+
 PKG_LICENSE:=GPL-3.0-only
-PKG_LICENSE_FILES:=AdGuardHome/LICENSE.txt
+PKG_LICENSE_FILES:=LICENSE.txt
+PKG_BUILD_DEPENDS:=golang/host
+PKG_BUILD_PARALLEL:=1
+PKG_BUILD_FLAGS:=no-mips16
+
+GO_PKG:=github.com/AdguardTeam/AdGuardHome
+GO_PKG_BUILD_PKG:=$(GO_PKG)
+GO_PKG_LDFLAGS_X:= \
+	$(GO_PKG)/internal/version.channel=release \
+	$(GO_PKG)/internal/version.version=v$(PKG_VERSION) \
+	$(GO_PKG)/internal/version.committime=$(SOURCE_DATE_EPOCH) \
+	$(GO_PKG)/internal/version.goarm=$(GO_ARM) \
+	$(GO_PKG)/internal/version.gomips=$(GO_MIPS)
 
 include $(INCLUDE_DIR)/package.mk
+include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
 define Package/adguardhome-core
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=AdGuard Home binary for the existing LuCI service
+  TITLE:=Source-built AdGuard Home core for the existing LuCI service
   URL:=https://github.com/AdguardTeam/AdGuardHome
-  DEPENDS:=@aarch64 +ca-bundle
+  DEPENDS:=@aarch64 $(GO_ARCH_DEPENDS) +ca-bundle
   CONFLICTS:=adguardhome
 endef
 
 define Package/adguardhome-core/description
-  The upstream ARM64 binary only. Configuration and service management are
-  provided by luci-app-adguardhome; no second init script is installed.
+  AdGuard Home built with the supported Go toolchain. The OneNAS LuCI
+  package provides configuration and service management; this core does
+  not install another init script.
+endef
+
+define Download/adguardhome-core-frontend
+	URL:=$(FRONTEND_URL)
+	URL_FILE:=AdGuardHome_frontend.tar.gz
+	FILE:=$(FRONTEND_DEST)
+	HASH:=$(FRONTEND_HASH)
 endef
 
 define Build/Prepare
-	mkdir -p $(PKG_BUILD_DIR)
-	$(TAR) -xzf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR)
-endef
-
-define Build/Compile
+	$(call Build/Prepare/Default)
+	gzip -dc $(DL_DIR)/$(FRONTEND_DEST) | $(HOST_TAR) -C $(PKG_BUILD_DIR)/ $(TAR_OPTIONS)
 endef
 
 define Package/adguardhome-core/install
-	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/AdGuardHome/AdGuardHome $(1)/usr/bin/AdGuardHome
+	$(call GoPackage/Package/Install/Bin,$(1))
 endef
 
+$(eval $(call Download,adguardhome-core-frontend))
+$(eval $(call GoBinPackage,adguardhome-core))
 $(eval $(call BuildPackage,adguardhome-core))

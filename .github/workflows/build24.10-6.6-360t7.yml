@@ -131,6 +131,11 @@ jobs:
         cd openwrt
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
+        adguard_binary=staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/usr/bin/AdGuardHome
+        test -s "$adguard_binary" || { echo 'Missing source-built AdGuard Home executable' >&2; exit 1; }
+        go_patch=$(sed -n 's/^GO_VERSION_PATCH:=//p' feeds/packages/lang/golang/golang1.27/Makefile)
+        [[ "$go_patch" =~ ^[0-9]+$ ]] || { echo 'Missing Go 1.27 patch version' >&2; exit 1; }
+        strings -a "$adguard_binary" | grep -Fx "go1.27.$go_patch" > /dev/null || { echo 'AdGuard Home was not built with the selected Go 1.27 compiler' >&2; exit 1; }
         test -s staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/etc/uci-defaults/90-adguardhome-legacy-config || { echo 'Missing AdGuardHome legacy migration script in image root' >&2; exit 1; }
         test -x staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/etc/uci-defaults/99z-default-settings-us
         cmp files/etc/uci-defaults/99z-default-settings-us staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/etc/uci-defaults/99z-default-settings-us
@@ -173,7 +178,7 @@ jobs:
         for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
           awk -v pkg="$pkg" '$1 == pkg { found=1 } END { exit !found }' "$manifest" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
         done
-        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust) ' "$manifest"; then
+        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$manifest"; then
           echo "Forbidden package in public firmware" >&2
           exit 1
         fi

@@ -1,88 +1,100 @@
 #!/usr/bin/env python3
-"""Prepare the public ARM64 AdGuard Home binary package for an OpenWrt build."""
+"""Prepare the latest public AdGuard Home source build using the supported Go toolchain."""
 
-import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 
 REPOSITORY = "AdguardTeam/AdGuardHome"
-ASSET = "AdGuardHome_linux_arm64.tar.gz"
+FRONTEND = "AdGuardHome_frontend.tar.gz"
+FEED_REPOSITORY = "immortalwrt/packages"
+FEED_REF = "openwrt-25.12"
 
 
-def curl(url, *args):
+def github_json(path):
+    return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+
+
+def github_raw(path):
     return subprocess.check_output(
-        ["curl", "-fsSL", "--retry", "3", "--connect-timeout", "20",
-         "--max-time", "300", url, *args],
+        ["gh", "api", path, "-H", "Accept: application/vnd.github.raw+json"],
         text=True,
     )
 
 
-def prepare(build_root):
-    release = json.loads(subprocess.check_output(
-        ["gh", "api", f"repos/{REPOSITORY}/releases/latest"], text=True
-    ))
+def assignment(recipe, field, pattern):
+    matches = re.findall(r"^" + re.escape(field) + r":=(" + pattern + r")$", recipe, re.M)
+    if len(matches) != 1:
+        raise ValueError(f"Invalid official AdGuard Home recipe field: {field}")
+    return matches[0]
+
+
+def go_version(value):
+    parts = tuple(int(part) for part in value.split("."))
+    if len(parts) not in (2, 3):
+        raise ValueError("Invalid Go version")
+    return parts + (0,) * (3 - len(parts))
+
+
+def select_release(release, recipe, module, compiler_recipe):
     tag = release["tag_name"]
-    if release.get("draft") or release.get("prerelease") or not re.fullmatch(r"v?\d[\w.-]*", tag):
-        raise ValueError("Expected a stable AdGuard Home release tag")
-    asset = next(item for item in release["assets"] if item["name"] == ASSET)
-    digest = asset.get("digest", "")
-    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-        raise ValueError("The release asset has no SHA-256 digest")
-    base_url = f"https://github.com/{REPOSITORY}/releases/download/{tag}"
-    url = f"{base_url}/{ASSET}"
-    if asset["browser_download_url"] != url:
-        raise ValueError("Unexpected AdGuard Home release asset URL")
+    if release.get("draft") or release.get("prerelease") or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+        raise ValueError("Expected a stable AdGuard Home release")
+    version = tag.removeprefix("v")
+    if assignment(recipe, "PKG_NAME", "adguardhome") != "adguardhome":
+        raise ValueError("Unexpected upstream package")
+    if assignment(recipe, "PKG_VERSION", r"[0-9.]+") != version:
+        raise ValueError("Official 25.12 source recipe is older than the latest stable release")
+    source_hash = assignment(recipe, "PKG_HASH", r"[0-9a-f]{64}")
+    frontend_hash = assignment(recipe, "FRONTEND_HASH", r"[0-9a-f]{64}")
+    if "https://codeload.github.com/AdguardTeam/AdGuardHome/tar.gz/" not in recipe:
+        raise ValueError("Unexpected AdGuard Home source URL")
+    assets = [asset for asset in release["assets"] if asset["name"] == FRONTEND]
+    if len(assets) != 1:
+        raise ValueError("Expected one official frontend asset")
+    asset = assets[0]
+    expected_url = f"https://github.com/{REPOSITORY}/releases/download/{tag}/{FRONTEND}"
+    if (asset["browser_download_url"] != expected_url or type(asset["size"]) is not int
+            or asset["size"] <= 0 or asset["digest"] != f"sha256:{frontend_hash}"):
+        raise ValueError("AdGuard Home frontend release SHA-256 or URL mismatch")
+    requirements = re.findall(r"^go\s+(\d+\.\d+(?:\.\d+)?)\s*$", module, re.M)
+    if len(requirements) != 1:
+        raise ValueError("Missing or ambiguous go.mod requirement")
+    minor = assignment(compiler_recipe, "GO_VERSION_MAJOR_MINOR", r"1\.27")
+    patch = assignment(compiler_recipe, "GO_VERSION_PATCH", r"[0-9]+")
+    compiler_version = f"{minor}.{patch}"
+    if go_version(compiler_version) < go_version("1.27.3") or go_version(requirements[0]) > go_version(compiler_version):
+        raise ValueError(f"AdGuard Home requires Go {requirements[0]}; selected compiler is {compiler_version}")
+    return version, source_hash, frontend_hash, compiler_version
 
-    downloads = build_root / "dl"
-    downloads.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(prefix="adguardhome-", dir=downloads)
-    os.close(fd)
-    temporary = Path(temporary_name)
-    try:
-        curl(url, "-o", str(temporary))
-        hasher = hashlib.sha256()
-        with temporary.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                hasher.update(chunk)
-        checksum = hasher.hexdigest()
-        if f"sha256:{checksum}" != digest:
-            raise ValueError("AdGuard Home asset checksum mismatch")
-        with tarfile.open(temporary, "r:gz") as archive:
-            member = next(item for item in archive.getmembers()
-                          if item.name.removeprefix("./") == "AdGuardHome/AdGuardHome")
-            if not member.isfile():
-                raise ValueError("Expected a regular AdGuardHome executable")
-            with archive.extractfile(member) as binary:
-                header = binary.read(20)
-            if header[:6] != b"\x7fELF\x02\x01" or header[18:20] != b"\xb7\x00":
-                raise ValueError("Expected a 64-bit little-endian AArch64 executable")
 
-        version = tag.removeprefix("v")
-        temporary.replace(downloads / f"adguardhome-core-{version}-linux-arm64.tar.gz")
-        package = build_root / "package" / "adguardhome-core"
-        package.mkdir(parents=True, exist_ok=True)
-        template = Path(__file__).resolve().parent.parent / "packages/adguardhome-core/Makefile"
-        shutil.copyfile(template, package / "Makefile")
-        (package / "release.mk").write_text(
-            f"PKG_VERSION:={version}\nPKG_HASH:={checksum}\n"
-            f"ADGUARDHOME_SOURCE_URL:={base_url}\n"
-        )
-        print(f"==> AdGuard Home core {version}, ARM64, SHA-256 verified: {checksum}")
-    finally:
-        temporary.unlink(missing_ok=True)
+def prepare(build_root):
+    release = github_json(f"repos/{REPOSITORY}/releases/latest")
+    recipe = github_raw(
+        f"repos/{FEED_REPOSITORY}/contents/net/adguardhome/Makefile?ref={FEED_REF}"
+    )
+    module = github_raw(f"repos/{REPOSITORY}/contents/go.mod?ref={release['tag_name']}")
+    compiler = (build_root / "feeds/packages/lang/golang/golang1.27/Makefile").read_text()
+    version, source_hash, frontend_hash, go = select_release(release, recipe, module, compiler)
+
+    package = build_root / "package/adguardhome-core"
+    package.mkdir(parents=True, exist_ok=True)
+    template = Path(__file__).resolve().parent.parent / "packages/adguardhome-core/Makefile"
+    shutil.copyfile(template, package / "Makefile")
+    (package / "release.mk").write_text(
+        f"PKG_VERSION:={version}\n"
+        f"PKG_HASH:={source_hash}\n"
+        f"FRONTEND_HASH:={frontend_hash}\n"
+    )
+    print(f"==> AdGuard Home source {version} with Go {go}; "
+          "source/frontend SHA-256 supplied by official ImmortalWrt recipe")
 
 
 if __name__ == "__main__":
     try:
         prepare(Path.cwd())
-    except (OSError, ValueError, KeyError, StopIteration, tarfile.TarError,
-            subprocess.CalledProcessError) as error:
-        print(f"Cannot prepare AdGuard Home core: {error}", file=sys.stderr)
-        sys.exit(1)
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
+        sys.exit(f"Cannot prepare AdGuard Home source package: {error}")
