@@ -14,8 +14,10 @@ umask 077
 mkdir -p /etc/adguardhome
 if [ "$source" != "$target" ]; then
     if [ -e "$target" ] && ! cmp -s "$source" "$target"; then
-        logger -t adguardhome 'Legacy migration stopped: destination configuration already exists'
-        exit 1
+        if [ ! -f "/rom$target" ] || ! cmp -s "$target" "/rom$target"; then
+            logger -t adguardhome 'Legacy migration stopped: destination configuration was customized'
+            exit 1
+        fi
     fi
     cp -p "$source" "$target"
 fi
@@ -32,6 +34,9 @@ for option in enabled redirect verbose crontab gc maxprocs memlimit; do
 done
 uci -q delete adguardhome.config.config || :
 uci -q delete adguardhome.config.workdir || :
+# The restored legacy /etc/hosts may be 0600, inaccessible to the
+# adguardhome service's jailed hosts parser.
+chmod 644 /etc/hosts
 uci set adguardhome.config.legacy_migrated=1
 uci commit adguardhome
 /etc/init.d/adguardhome enable
