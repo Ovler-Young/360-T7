@@ -1,0 +1,206 @@
+#
+# 25.12-only experimental workflow; 24.10 builds use their own workflow files.
+# https://github.com/P3TERX/Actions-OpenWrt
+#
+# File: .github/workflows/build25.12-360t7.yml
+# Description: Build OpenWrt using GitHub Actions
+#
+# Copyright (c) 2019-2024 P3TERX <https://p3terx.com>
+#
+# This is free software, licensed under the MIT License.
+# See /LICENSE for more information.
+#
+
+name: Build ImmortalWrt 25.12.2 360T7 (experimental)
+
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  REPO_URL: https://github.com/immortalwrt/immortalwrt
+  REPO_BRANCH: v25.12.2
+  FEEDS_CONF: feeds.conf.default
+  CONFIG_FILE: 2512-360t7.config
+  DIY_P1_SH: diy-part1.sh
+  DIY_P2_SH: 2512-diy-part2.sh
+  UPLOAD_FIRMWARE: true
+  TZ: America/New_York
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+      with:
+        persist-credentials: false
+
+    - name: Initialization environment
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+        sudo docker image prune --all --force
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
+        sudo timedatectl set-timezone "$TZ"
+        sudo mkdir -p /workdir
+        sudo chown $USER:$GROUPS /workdir
+
+    - name: Clone source code
+      working-directory: /workdir
+      run: |
+        df -hT $PWD
+        git clone $REPO_URL -b $REPO_BRANCH openwrt
+        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+    - name: Cache OpenWrt dl directory
+      continue-on-error: true
+      uses: actions/cache@v4
+      with:
+        path: /workdir/openwrt/dl
+        key: openwrt-2512-dl-${{ hashFiles('diy-part1.sh', '2512-diy-part2.sh', '2512-360t7.config') }}
+        restore-keys: |
+          openwrt-2512-dl-
+
+    - name: Cache toolchain and ccache
+      continue-on-error: true
+      uses: klever1988/cachewrtbuild@main
+      with:
+        ccache: 'true'
+        toolchain: 'true'
+        skip: 'true'
+        prefix: '${{ github.workspace }}/openwrt'
+        mixkey: 'mediatek-filogic-2512'
+
+    - name: Load custom feeds
+      run: |
+        [ -e $FEEDS_CONF ] && mv $FEEDS_CONF openwrt/feeds.conf.default
+        chmod +x $DIY_P1_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: Update feeds
+      run: |
+         cd openwrt
+         ./scripts/feeds update -a
+
+
+    - name: Install feeds
+      run: |
+        cd openwrt
+        ./scripts/feeds install -a
+
+    - name: Load custom configuration
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        # [ -e files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH
+        cd openwrt
+        $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: Download package
+      id: package
+      run: |
+        cd openwrt
+        # Save explicit package intent before Kconfig can discard unavailable symbols.
+        sed -n 's/^CONFIG_PACKAGE_\(.*\)=y$/\1/p' .config | \
+          grep -vE '^(dnsmasq_full_|TAR_)' > required-packages.txt
+        test -s required-packages.txt
+        make defconfig
+        missing=0
+        for pkg in $(cat required-packages.txt); do
+          grep -qx "CONFIG_PACKAGE_${pkg}=y" .config || { echo "Required package missing: $pkg" >&2; missing=1; }
+        done
+        test "$missing" -eq 0
+        ! grep -qx 'CONFIG_PACKAGE_librespeed-cli-rust=y' .config || { echo 'Unexpected Rust LibreSpeed package' >&2; exit 1; }
+        ! grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config || { echo 'Unexpected proprietary MTK Wi-Fi driver' >&2; exit 1; }
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+        ls dl/ | sort > /tmp/dl_needed.txt
+
+    - name: Compile the firmware
+      id: compile
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile"
+        make -j$(nproc) || make -j1 || make -j1 V=s
+        adguard_binary=staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/usr/bin/AdGuardHome
+        test -s "$adguard_binary" || { echo 'Missing source-built AdGuard Home executable' >&2; exit 1; }
+        go_patch=$(sed -n 's/^GO_VERSION_PATCH:=//p' feeds/packages/lang/golang/golang1.27/Makefile)
+        [[ "$go_patch" =~ ^[0-9]+$ ]] || { echo 'Missing Go 1.27 patch version' >&2; exit 1; }
+        strings -a "$adguard_binary" | grep -Fx "go1.27.$go_patch" > /dev/null || { echo 'AdGuard Home was not built with the selected Go 1.27 compiler' >&2; exit 1; }
+        # The files/ overlay is applied during rootfs image creation, not to staging_dir/root-mediatek.
+        mapfile -d '' -t rootfs_images < <(find build_dir/target-*/linux-mediatek_filogic -maxdepth 1 -type f -name 'root.squashfs*' ! -name '*.pagesync' -print0)
+        per_device_rootfs=()
+        for candidate in "${rootfs_images[@]}"; do
+          [[ "$candidate" == *'+pkg='* ]] && per_device_rootfs+=("$candidate")
+        done
+        if test "${#per_device_rootfs[@]}" -gt 0; then rootfs_images=("${per_device_rootfs[@]}"); fi
+        test "${#rootfs_images[@]}" -eq 1 || { echo 'Expected one 360T7 squashfs rootfs to verify overlays' >&2; exit 1; }
+        rootfs="${rootfs_images[0]}"
+        test -s "$rootfs"
+        for script in 90-adguardhome-legacy-config 99z-default-settings-us; do
+          unsquashfs -cat "$rootfs" "etc/uci-defaults/$script" | cmp - "files/etc/uci-defaults/$script" || { echo "Missing or modified $script in built rootfs" >&2; exit 1; }
+        done
+        echo "status=success" >> $GITHUB_OUTPUT
+        grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
+        [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
+
+    - name: Clean unused dl packages
+      continue-on-error: true
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        comm -23 <(ls /workdir/openwrt/dl/ | sort) /tmp/dl_needed.txt | xargs -I{} rm -rf "/workdir/openwrt/dl/{}"
+
+
+    - name: Check space usage
+      continue-on-error: true
+      if: (!cancelled())
+      run: df -hT
+
+    - name: Organize files
+      id: organize
+      if: env.UPLOAD_FIRMWARE == 'true' && steps.compile.outputs.status == 'success'
+      run: |
+        cd openwrt/bin/targets/mediatek/filogic
+        shopt -s nullglob
+        images=(*-qihoo_360t7-squashfs-sysupgrade.itb)
+        test "${#images[@]}" -eq 1 || { echo 'Expected one official 360T7 FIT image' >&2; exit 1; }
+        image="${images[0]}"
+        test -s "$image"
+        artifact="$RUNNER_TEMP/public-firmware"
+        mkdir -p "$artifact"
+        awk -v image="$image" '$2 == image || $2 == "*" image { print }' sha256sums > "$artifact/sha256sums"
+        test "$(wc -l < "$artifact/sha256sums")" -eq 1
+        sha256sum --strict -c "$artifact/sha256sums"
+        manifests=(*filogic.manifest)
+        test "${#manifests[@]}" -eq 1
+        manifest="${manifests[0]}"
+        test -s "$manifest"
+        for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
+          awk -v pkg="$pkg" '$1 == pkg { found=1 } END { exit !found }' "$manifest" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
+        done
+        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$manifest"; then
+          echo "Forbidden package in public firmware" >&2
+          exit 1
+        fi
+        cp "$image" "$manifest" "$artifact/"
+        echo "FIRMWARE=$artifact" >> $GITHUB_ENV
+        echo "status=success" >> $GITHUB_OUTPUT
+
+    - name: Upload firmware directory
+      continue-on-error: false
+      uses: actions/upload-artifact@main
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      with:
+        name: ImmortalWrt_25.12_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}

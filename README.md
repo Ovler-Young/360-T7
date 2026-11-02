@@ -25,6 +25,8 @@ config配置文件，建议采用本地生成。可装linux或者Windows下装ws
 Settings，Actions，General，右侧栏拉到最下面，	Workflow permissions，勾选 Read and write permissions
 
 ----------------------------------------------------------------
+**各版本独立构建入口**：`build24.10-6.6-360t7.yml`（24.10）、`build24.10-6.6-base-360t7.yml`（24.10 Base）、`build25.12-360t7.yml`（25.12.x 实验版）。它们分别选择独立配置；25.12 只上传 CI artifact，不创建 Release。GitHub 的 `workflow_dispatch` 要求相应 workflow 文件先存在于默认分支；25.12 独立 workflow 合入默认分支前不能直接按新文件名手动触发。
+
 **360T7 25.12 实验镜像升级警告：不可从正在运行的 24.10 直接 sysupgrade，禁止强制升级。** 旧 24.10 使用 kernel/rootfs NAND 卷和旧引导程序；25.12 官方 FIT 镜像使用 fit UBI 卷，并采用不同的引导方式。不保留设置也不能解决这些差异。只有用户本人验证引导程序兼容性及恢复方案后，才可自行决定并执行刷写。
 
 其他已确认兼容的固件跨版本更新时，不要保存设置。

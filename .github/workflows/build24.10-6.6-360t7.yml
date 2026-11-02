@@ -10,20 +10,24 @@
 # See /LICENSE for more information.
 #
 
-name: Build ImmortalWrt 25.12.2 360T7 (experimental)
+name: Build immortalwrt24.10-6.6 360T7
 
 on:
+  repository_dispatch:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write 
 env:
-  REPO_URL: https://github.com/immortalwrt/immortalwrt
-  REPO_BRANCH: v25.12.2
+  REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-24.10
+  REPO_BRANCH: openwrt-24.10-6.6
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: 2512-360t7.config
+  CONFIG_FILE: 2410-6.6-360t7.config
   DIY_P1_SH: diy-part1.sh
-  DIY_P2_SH: 2512-diy-part2.sh
+  DIY_P2_SH: 2410-diy-part2.sh
+  RELEASE_FILE: release.txt  
+  UPLOAD_BIN_DIR: true
   UPLOAD_FIRMWARE: true
+  UPLOAD_RELEASE: true
   TZ: America/New_York
 
 jobs:
@@ -33,8 +37,6 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@main
-      with:
-        persist-credentials: false
 
     - name: Initialization environment
       env:
@@ -62,7 +64,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /workdir/openwrt/dl
-        key: openwrt-dl-${{ hashFiles('diy-part1.sh', '2512-diy-part2.sh', '2512-360t7.config') }}
+        key: openwrt-dl-${{ hashFiles('diy-part1.sh', '2410-diy-part2.sh') }}
         restore-keys: |
           openwrt-dl-
 
@@ -74,7 +76,7 @@ jobs:
         toolchain: 'true'
         skip: 'true'
         prefix: '${{ github.workspace }}/openwrt'
-        mixkey: 'mediatek-filogic-2512'
+        mixkey: 'mediatek-filogic'
 
     - name: Load custom feeds
       run: |
@@ -87,6 +89,8 @@ jobs:
       run: |
          cd openwrt
          ./scripts/feeds update -a
+         rm -rf feeds/packages/lang/golang
+         git clone https://github.com/kenzok8/golang -b 1.26 feeds/packages/lang/golang
 
 
     - name: Install feeds
@@ -95,8 +99,6 @@ jobs:
         ./scripts/feeds install -a 
          
     - name: Load custom configuration
-      env:
-        GH_TOKEN: ${{ github.token }}
       run: |
         # [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
@@ -108,18 +110,7 @@ jobs:
       id: package
       run: |
         cd openwrt
-        # Save explicit package intent before Kconfig can discard unavailable symbols.
-        sed -n 's/^CONFIG_PACKAGE_\(.*\)=y$/\1/p' .config | \
-          grep -vE '^(dnsmasq_full_|TAR_)' > required-packages.txt
-        test -s required-packages.txt
         make defconfig
-        missing=0
-        for pkg in $(cat required-packages.txt); do
-          grep -qx "CONFIG_PACKAGE_${pkg}=y" .config || { echo "Required package missing: $pkg" >&2; missing=1; }
-        done
-        test "$missing" -eq 0
-        ! grep -qx 'CONFIG_PACKAGE_librespeed-cli-rust=y' .config || { echo 'Unexpected Rust LibreSpeed package' >&2; exit 1; }
-        ! grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config || { echo 'Unexpected proprietary MTK Wi-Fi driver' >&2; exit 1; }
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
@@ -131,24 +122,6 @@ jobs:
         cd openwrt
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 || make -j1 V=s
-        adguard_binary=staging_dir/target-aarch64_cortex-a53_musl/root-mediatek/usr/bin/AdGuardHome
-        test -s "$adguard_binary" || { echo 'Missing source-built AdGuard Home executable' >&2; exit 1; }
-        go_patch=$(sed -n 's/^GO_VERSION_PATCH:=//p' feeds/packages/lang/golang/golang1.27/Makefile)
-        [[ "$go_patch" =~ ^[0-9]+$ ]] || { echo 'Missing Go 1.27 patch version' >&2; exit 1; }
-        strings -a "$adguard_binary" | grep -Fx "go1.27.$go_patch" > /dev/null || { echo 'AdGuard Home was not built with the selected Go 1.27 compiler' >&2; exit 1; }
-        # The files/ overlay is applied during rootfs image creation, not to staging_dir/root-mediatek.
-        mapfile -d '' -t rootfs_images < <(find build_dir/target-*/linux-mediatek_filogic -maxdepth 1 -type f -name 'root.squashfs*' ! -name '*.pagesync' -print0)
-        per_device_rootfs=()
-        for candidate in "${rootfs_images[@]}"; do
-          [[ "$candidate" == *'+pkg='* ]] && per_device_rootfs+=("$candidate")
-        done
-        if test "${#per_device_rootfs[@]}" -gt 0; then rootfs_images=("${per_device_rootfs[@]}"); fi
-        test "${#rootfs_images[@]}" -eq 1 || { echo 'Expected one 360T7 squashfs rootfs to verify overlays' >&2; exit 1; }
-        rootfs="${rootfs_images[0]}"
-        test -s "$rootfs"
-        for script in 90-adguardhome-legacy-config 99z-default-settings-us; do
-          unsquashfs -cat "$rootfs" "etc/uci-defaults/$script" | cmp - "files/etc/uci-defaults/$script" || { echo "Missing or modified $script in built rootfs" >&2; exit 1; }
-        done
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV
@@ -166,40 +139,62 @@ jobs:
       if: (!cancelled())
       run: df -hT
 
+    - name: Upload bin directory
+      continue-on-error: true
+      uses: actions/upload-artifact@main
+      if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
+      with:
+        name: OpenWrt_bin${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
+        path: openwrt/bin
+
     - name: Organize files
       id: organize
-      if: env.UPLOAD_FIRMWARE == 'true' && steps.compile.outputs.status == 'success'
+      if: env.UPLOAD_FIRMWARE == 'true' && !cancelled()
       run: |
-        cd openwrt/bin/targets/mediatek/filogic
-        shopt -s nullglob
-        images=(*-qihoo_360t7-squashfs-sysupgrade.itb)
-        test "${#images[@]}" -eq 1 || { echo 'Expected one official 360T7 FIT image' >&2; exit 1; }
-        image="${images[0]}"
-        test -s "$image"
-        artifact="$RUNNER_TEMP/public-firmware"
-        mkdir -p "$artifact"
-        awk -v image="$image" '$2 == image || $2 == "*" image { print }' sha256sums > "$artifact/sha256sums"
-        test "$(wc -l < "$artifact/sha256sums")" -eq 1
-        sha256sum --strict -c "$artifact/sha256sums"
-        manifests=(*filogic.manifest)
-        test "${#manifests[@]}" -eq 1
-        manifest="${manifests[0]}"
-        test -s "$manifest"
-        for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
-          awk -v pkg="$pkg" '$1 == pkg { found=1 } END { exit !found }' "$manifest" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
-        done
-        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$manifest"; then
-          echo "Forbidden package in public firmware" >&2
-          exit 1
-        fi
-        cp "$image" "$manifest" "$artifact/"
-        echo "FIRMWARE=$artifact" >> $GITHUB_ENV
+        cd openwrt/bin/targets/*/*
+        rm -rf packages
+        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
-      continue-on-error: false
+      continue-on-error: true
       uses: actions/upload-artifact@main
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
         name: OpenWrt_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
+
+    - name: Generate release tag
+      continue-on-error: true
+      id: tag
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      run: |
+        echo "release_tag=$(date +"%Y.%m.%d-%H%M")" >> $GITHUB_OUTPUT
+        touch "${RELEASE_FILE}"
+
+        if [ "${UPLOAD_GOFILE}" = "true" ] && [ -n "${{ steps.gofile.outputs.url }}" ]; then
+          echo "{U+0001F517} [GoFile](${{ steps.gofile.outputs.url }})" >> "${RELEASE_FILE}"
+        fi
+
+        echo "status=success" >> $GITHUB_OUTPUT
+    
+    - name: Upload firmware to release
+      continue-on-error: true
+      uses: softprops/action-gh-release@v2
+      if: steps.tag.outputs.status == 'success' && !cancelled()
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.tag.outputs.release_tag }}
+        body_path: ${{ env.RELEASE_FILE }}
+        files: ${{ env.FIRMWARE }}/*
+
+    - name: Remove old Releases
+      continue-on-error: true
+      uses: dev-drprasad/delete-older-releases@master
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      with:
+        keep_latest: 12
+        delete_tags: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
