@@ -159,7 +159,7 @@ jobs:
         cd openwrt/bin/targets/*/*
         for image in *qihoo_360t7*squashfs-sysupgrade.bin; do
           test -s "$image" || { echo "Missing or empty qihoo_360t7 sysupgrade image" >&2; exit 1; }
-          grep -Fq " $image" sha256sums || { echo "Missing image SHA-256 entry" >&2; exit 1; }
+          awk -v image="$image" '$2 == "*" image || $2 == image { found = 1 } END { exit !found }' sha256sums || { echo "Missing image SHA-256 entry" >&2; exit 1; }
         done
         ls *qihoo_360t7.manifest >/dev/null
         sha256sum -c sha256sums --ignore-missing
