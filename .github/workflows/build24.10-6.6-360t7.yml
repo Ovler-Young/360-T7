@@ -99,6 +99,8 @@ jobs:
         ./scripts/feeds install -a 
          
     - name: Load custom configuration
+      env:
+        GH_TOKEN: ${{ github.token }}
       run: |
         # [ -e files ] && mv files openwrt/files
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config

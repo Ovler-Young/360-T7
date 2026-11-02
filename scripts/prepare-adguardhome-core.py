@@ -25,7 +25,9 @@ def curl(url, *args):
 
 
 def prepare(build_root):
-    release = json.loads(curl(f"https://api.github.com/repos/{REPOSITORY}/releases/latest"))
+    release = json.loads(subprocess.check_output(
+        ["gh", "api", f"repos/{REPOSITORY}/releases/latest"], text=True
+    ))
     tag = release["tag_name"]
     if release.get("draft") or release.get("prerelease") or not re.fullmatch(r"v?\d[\w.-]*", tag):
         raise ValueError("Expected a stable AdGuard Home release tag")

@@ -123,8 +123,7 @@ update_release_package() {
     return 1
   fi
 
-  tag=$(curl -fsSL --retry 3 "https://api.github.com/repos/$repo/releases/latest" \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])') || return 1
+  tag=$(gh api "repos/$repo/releases/latest" --jq .tag_name) || return 1
   if [[ ! "$tag" =~ ^v?[0-9][0-9A-Za-z._-]*$ ]]; then
     echo "Invalid release tag for $pkg: $tag" >&2
     return 1
