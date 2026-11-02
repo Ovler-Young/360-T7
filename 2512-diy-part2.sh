@@ -52,7 +52,7 @@ sed -i '\|^exit 0$|i sed -i "s,mt7981,filogic,g" /etc/apk/repositories.d/distfee
 
 # Inject US locale override script that runs after 99-default-settings-chinese on first boot.
 # Uses a higher sort key (99z) so it executes last among the 99-* scripts.
-OVERRIDE_SCRIPT="package/emortal/default-settings/files/99z-default-settings-us"
+OVERRIDE_SCRIPT="files/etc/uci-defaults/99z-default-settings-us"
 mkdir -p "$(dirname "$OVERRIDE_SCRIPT")"
 cat > "$OVERRIDE_SCRIPT" <<'OVERRIDE_EOF'
 #!/bin/sh
@@ -77,13 +77,10 @@ uci -q batch <<-EOF
 	commit system
 EOF
 
-# Restore apk distfeeds.list to official upstream (undo any mirror substitution)
-if [ -f /etc/apk/repositories.d/distfeeds.list.bak ]; then
-	cp /etc/apk/repositories.d/distfeeds.list.bak /etc/apk/repositories.d/distfeeds.list
-else
-	sed -i "s,https://mirrors.vsean.net/openwrt,https://downloads.immortalwrt.org,g" \
-		/etc/apk/repositories.d/distfeeds.list
-fi
+# Normalize active feeds directly; a saved mirror list may be stale.
+feeds=/etc/apk/repositories.d/distfeeds.list
+[ -s "$feeds" ] || exit 1
+sed -i -E 's#https?://[^/]+/(openwrt/|immortalwrt/)?#https://downloads.immortalwrt.org/#g; s#mt7981#filogic#g' "$feeds"
 
 exit 0
 OVERRIDE_EOF

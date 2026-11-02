@@ -3,12 +3,17 @@ set -eu
 
 [ "$(uci -q get AdGuardHome.AdGuardHome || :)" = 'AdGuardHome' ] || exit 0
 [ "$(uci -q get adguardhome.config.legacy_migrated || :)" != '1' ] || exit 0
-[ "$(uci -q get adguardhome.config.enabled || :)" != '1' ] || exit 0
 
 source=$(uci -q get AdGuardHome.AdGuardHome.configpath || :)
 source=${source:-/etc/AdGuardHome.yaml}
 [ -f "$source" ] || exit 1
 target=/etc/adguardhome/adguardhome.yaml
+
+# Stop the legacy service before copying its live configuration.
+if [ -x /etc/init.d/AdGuardHome ]; then
+    /etc/init.d/AdGuardHome stop
+    /etc/init.d/AdGuardHome disable
+fi
 
 umask 077
 mkdir -p /etc/adguardhome
@@ -17,8 +22,10 @@ if [ "$source" != "$target" ]; then
         logger -t adguardhome 'Legacy migration stopped: destination configuration already exists'
         exit 1
     fi
-    cp -p "$source" "$target"
+    cp "$source" "$target"
 fi
+
+chmod 600 "$target"
 
 uci set adguardhome.config=adguardhome
 uci set "adguardhome.config.config_file=$target"
@@ -32,8 +39,11 @@ for option in enabled redirect verbose crontab gc maxprocs memlimit; do
 done
 uci -q delete adguardhome.config.config || :
 uci -q delete adguardhome.config.workdir || :
-uci set adguardhome.config.legacy_migrated=1
 uci commit adguardhome
 /etc/init.d/adguardhome enable
+# Remove the superseded service only after its replacement is configured.
+rm -f /etc/init.d/AdGuardHome
+uci set adguardhome.config.legacy_migrated=1
+uci commit adguardhome
 
 exit 0
