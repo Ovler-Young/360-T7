@@ -42,7 +42,7 @@ sed -i '\|^exit 0$|i sed -i "s,mt7981,filogic,g" /etc/opkg/distfeeds.conf' \
 
 # Inject US locale override script that runs after 99-default-settings-chinese on first boot.
 # Uses a higher sort key (99z) so it executes last among the 99-* scripts.
-OVERRIDE_SCRIPT="package/emortal/default-settings/files/99z-default-settings-us"
+OVERRIDE_SCRIPT="package/base-files/files/etc/uci-defaults/99z-default-settings-us"
 mkdir -p "$(dirname "$OVERRIDE_SCRIPT")"
 cat > "$OVERRIDE_SCRIPT" <<'OVERRIDE_EOF'
 #!/bin/sh
