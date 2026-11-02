@@ -104,7 +104,7 @@ sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makef
 install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
   package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
 
-# Update sing-box and cloudflared in feeds
+# Update sing-box in feeds
 pushd feeds/packages
 
 # sing-box: remove tailscale tag and update to latest release
@@ -112,42 +112,26 @@ pushd feeds/packages
 sed -i 's/,with_tailscale//g' net/sing-box/Makefile
 sed -i '/CONFIG_SING_BOX_TINY_BUILD_TAILSCALE/d' net/sing-box/Makefile
 
-# Add only the official versioned compiler; retain the release's default Go and feeds.
-go_ref=$(gh api repos/immortalwrt/packages/commits/openwrt-25.12 --jq .sha) || exit 1
-[[ "$go_ref" =~ ^[0-9a-f]{40}$ ]] || exit 1
-go_recipe=$(mktemp) || exit 1
-if ! gh api "repos/immortalwrt/packages/contents/lang/golang/golang1.27/Makefile?ref=$go_ref" \
-    -H 'Accept: application/vnd.github.raw+json' > "$go_recipe"; then
-  rm -f "$go_recipe"
-  exit 1
-fi
-# Refuse unexpected recipe layouts or compiler sources before installing the overlay.
-GO_COMPILER_VERSION=$(python3 - "$go_recipe" <<'PY_GO'
+# Resolve the distribution's actual default Go compiler for the sing-box go.mod check.
+GO_COMPILER_VERSION=$(python3 - <<'PY_VERSION'
 import pathlib
 import re
-import sys
 
-recipe = pathlib.Path(sys.argv[1]).read_text()
-def value(name):
-    matches = re.findall(r"^" + re.escape(name) + r":=(.*)$", recipe, re.M)
+def value(content, name, pattern):
+    matches = re.findall(r"^" + name + r":=(" + pattern + r")$", content, re.M)
     if len(matches) != 1:
-        sys.exit(f"Missing or ambiguous Go recipe field: {name}")
-    return matches[0].strip()
+        raise SystemExit("Cannot determine default Go compiler version")
+    return matches[0]
 
-if (value("PKG_NAME") != "golang1.27"
-        or value("GO_VERSION_MAJOR_MINOR") != "1.27"
-        or not re.fullmatch(r"[0-9]+", value("GO_VERSION_PATCH"))
-        or value("GO_VERSION_RC")
-        or value("PKG_SOURCE") != "go$(PKG_FILE_VERSION).src.tar.gz"
-        or not value("GO_SOURCE_URLS").startswith("https://go.dev/dl/")
-        or not re.fullmatch(r"[0-9a-f]{64}", value("PKG_HASH"))):
-    sys.exit("Unexpected official Go source recipe")
-print("1.27." + value("GO_VERSION_PATCH"))
-PY_GO
-) || { rm -f "$go_recipe"; exit 1; }
-mkdir -p lang/golang/golang1.27
-mv "$go_recipe" lang/golang/golang1.27/Makefile
-printf '==> Official golang%s from immortalwrt/packages %s\n' "$GO_COMPILER_VERSION" "$go_ref"
+default = pathlib.Path("lang/golang/golang-values.mk").read_text()
+minor = value(default, "GO_DEFAULT_VERSION", r"[0-9]+\.[0-9]+")
+recipe = pathlib.Path(f"lang/golang/golang{minor}/Makefile").read_text()
+if value(recipe, "GO_VERSION_MAJOR_MINOR", r"[0-9]+\.[0-9]+") != minor:
+    raise SystemExit("Unexpected default Go compiler recipe")
+patch = value(recipe, "GO_VERSION_PATCH", r"[0-9]+")
+print(f"{minor}.{patch}")
+PY_VERSION
+) || exit 1
 
 update_release_package() {
   local pkg="$1" repo="$2" mk="net/$1/Makefile"
@@ -215,22 +199,18 @@ PY_GO
 
   sed -i \
     -e "s/^PKG_VERSION:=.*/PKG_VERSION:=$version/" \
-    -e "s/^PKG_HASH:=.*/PKG_HASH:=$hash/" \
-    -e '/^PKG_BUILD_DEPENDS/s/golang[0-9.]*/golang1.27/g' "$mk" || return 1
+    -e "s/^PKG_HASH:=.*/PKG_HASH:=$hash/" "$mk" || return 1
   grep -qx "PKG_VERSION:=$version" "$mk" && \
     grep -qx "PKG_HASH:=$hash" "$mk" || return 1
   echo "==> $pkg updated to $version (SHA-256: $hash)"
 }
 
 update_release_package sing-box SagerNet/sing-box || exit 1
-# cloudflared: update to latest release (tag has no 'v' prefix)
-update_release_package cloudflared cloudflare/cloudflared || exit 1
+
 
 popd
 
-# Register the added compiler recipe after the pinned feed was initially indexed.
-./scripts/feeds update -i packages
-./scripts/feeds install golang1.27
+python3 "$GITHUB_WORKSPACE/scripts/prepare-cloudflared-prebuilt.py" || exit 1
 
 if grep -qx 'CONFIG_PACKAGE_adguardhome-core=y' .config; then
   python3 "$GITHUB_WORKSPACE/scripts/prepare-adguardhome-core.py" || exit 1
