@@ -61,7 +61,7 @@ cat > "$OVERRIDE_SCRIPT" <<'OVERRIDE_EOF'
 # - NTP: Cloudflare + NIST (no Chinese servers)
 # - apk mirror: restored to official immortalwrt.org
 
-uci -q get system.@imm_init[0] > /dev/null || uci -q add system imm_init > /dev/null
+uci -q get system.@imm_init[0] > /dev/null || uci -q add system imm_init > /dev/null || exit 1
 
 uci -q batch <<-EOF
 	set system.@system[0].timezone="EST5EDT,M3.2.0,M11.1.0"
@@ -76,11 +76,12 @@ uci -q batch <<-EOF
 	set system.@imm_init[0].apk_mirror="https://downloads.immortalwrt.org"
 	commit system
 EOF
+[ "$?" -eq 0 ] || exit 1
 
 # Normalize active feeds directly; a saved mirror list may be stale.
 feeds=/etc/apk/repositories.d/distfeeds.list
 [ -s "$feeds" ] || exit 1
-sed -i -E 's#https?://[^/]+/(openwrt/|immortalwrt/)?#https://downloads.immortalwrt.org/#g; s#mt7981#filogic#g' "$feeds"
+sed -i -E 's#https?://[^/]+/(openwrt/|immortalwrt/)?#https://downloads.immortalwrt.org/#g; s#mt7981#filogic#g' "$feeds" || exit 1
 
 exit 0
 OVERRIDE_EOF
