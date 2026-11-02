@@ -87,6 +87,57 @@ exit 0
 OVERRIDE_EOF
 chmod +x "$OVERRIDE_SCRIPT"
 
+# Upgrade the pinned feed's default compiler with matching official 25.12 files.
+GO_REF=$(gh api repos/immortalwrt/packages/commits/openwrt-25.12 --jq .sha)
+[[ "$GO_REF" =~ ^[0-9a-f]{40}$ ]] || exit 1
+GO_RECIPE=$(mktemp)
+GO_HELPER=$(mktemp)
+gh api "repos/immortalwrt/packages/contents/lang/golang/golang1.27/Makefile?ref=$GO_REF" \
+  -H 'Accept: application/vnd.github.raw+json' > "$GO_RECIPE"
+gh api "repos/immortalwrt/packages/contents/lang/golang/golang-version.mk?ref=$GO_REF" \
+  -H 'Accept: application/vnd.github.raw+json' > "$GO_HELPER"
+python3 - "$GO_RECIPE" "$GO_HELPER" <<'PY_TOOLCHAIN'
+import pathlib
+import re
+import sys
+
+recipe = pathlib.Path(sys.argv[1]).read_text()
+helper = pathlib.Path(sys.argv[2]).read_text()
+def assignment(text, name, pattern):
+    values = re.findall(r"^" + re.escape(name) + r":=(" + pattern + r")$", text, re.M)
+    if len(values) != 1:
+        sys.exit(f"Invalid Go recipe assignment: {name}")
+    return values[0]
+
+assignment(recipe, "PKG_NAME", r"golang1\.27")
+assignment(recipe, "PKG_HASH", r"[0-9a-f]{64}")
+minor = assignment(recipe, "GO_VERSION_MAJOR_MINOR", r"1\.27")
+patch = int(assignment(recipe, "GO_VERSION_PATCH", r"[0-9]+"))
+if patch < 3:
+    sys.exit("Official Go recipe must provide Go >= 1.27.3")
+if "include ../golang-values.mk" not in helper or "$(if $(PKG_HOST_ONLY),BUILDONLY:=1)" not in helper:
+    sys.exit("Unexpected official Go build helper")
+root = pathlib.Path("feeds/packages/lang/golang")
+values_path = root / "golang-values.mk"
+values = values_path.read_text()
+assignment(values, "GO_DEFAULT_VERSION", r"1\.(?:26|27)")
+values = re.sub(r"^GO_DEFAULT_VERSION:=1\.(?:26|27)$",
+                "GO_DEFAULT_VERSION:=1.27", values, flags=re.M)
+for package in ("tailscale", "sing-box"):
+    content = pathlib.Path(f"feeds/packages/net/{package}/Makefile").read_text()
+    if not re.search(r"^PKG_BUILD_DEPENDS[:+]?=.*(?<![\w/])golang/host(?:\s|$)", content, re.M):
+        sys.exit(f"{package} must use the default golang/host toolchain")
+(root / "golang1.27").mkdir(exist_ok=True)
+(root / "golang1.27/Makefile").write_text(recipe)
+(root / "golang-version.mk").write_text(helper)
+values_path.write_text(values)
+print(f"==> Default Go compiler: {minor}.{patch}")
+PY_TOOLCHAIN
+rm -f "$GO_RECIPE" "$GO_HELPER"
+# Reindex local changes without moving the pinned feed revision.
+./scripts/feeds update -i packages
+./scripts/feeds install -p packages golang golang1.27
+
 # Add tailscale-community
 git clone https://github.com/tokisaki-galaxy/luci-app-tailscale-community --branch=master --depth=1 /tmp/luci-app-tailscale-community
 mkdir -p package/luci-app-tailscale-community
