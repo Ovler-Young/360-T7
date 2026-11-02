@@ -152,8 +152,10 @@ git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --d
 rm -rf package/luci-app-adguardhome/patches
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
+# Use the buildroot files overlay; the OneNAS LuCI Makefile does not
+# package arbitrary files from its package/root directory.
 install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
-  package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
+  files/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
 
 # Update sing-box in feeds
 pushd feeds/packages
@@ -257,6 +259,10 @@ PY_GO
 }
 
 update_release_package sing-box SagerNet/sing-box || exit 1
+# The pinned Tailscale 1.98.3 uses an old go-json-experiment alias that
+# references json/v2 APIs removed in Go 1.27. Upgrade to a release whose
+# go.mod explicitly supports the selected official compiler.
+update_release_package tailscale tailscale/tailscale || exit 1
 
 
 popd

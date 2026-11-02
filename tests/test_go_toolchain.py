@@ -9,6 +9,13 @@ SCRIPT = (ROOT / '2512-diy-part2.sh').read_text().split("<<'PY_TOOLCHAIN'\n", 1)
 
 
 class GoToolchainTests(unittest.TestCase):
+    def test_tailscale_tracks_supported_release_and_migration_overlay(self):
+        script = (ROOT / '2512-diy-part2.sh').read_text()
+        self.assertIn('update_release_package tailscale tailscale/tailscale || exit 1', script)
+        self.assertIn('update_release_package sing-box SagerNet/sing-box || exit 1', script)
+        self.assertIn('files/etc/uci-defaults/90-adguardhome-legacy-config || exit 1', script)
+        self.assertNotIn('package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config', script)
+
     def test_default_upgrade_and_security_floor(self):
         for patch in (2, 3, 4):
             with self.subTest(patch=patch), tempfile.TemporaryDirectory() as directory:
