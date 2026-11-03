@@ -33,7 +33,7 @@ define Package/adguardhome-core
   CATEGORY:=Network
   TITLE:=Source-built AdGuard Home core for the existing LuCI service
   URL:=https://github.com/AdguardTeam/AdGuardHome
-  DEPENDS:=@aarch64 $(GO_ARCH_DEPENDS) +ca-bundle
+  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
   CONFLICTS:=adguardhome
 endef
 

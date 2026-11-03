@@ -124,6 +124,18 @@ jobs:
         # before feed/setup-generated Kconfig dependencies are applied.
         test -s required-packages.txt
         make defconfig
+        if ! grep -qx 'Package: adguardhome-core' tmp/.packageinfo; then
+          echo 'Local adguardhome-core package missing from generated OpenWrt metadata' >&2
+          if test -f logs/package/adguardhome-core/dump.txt; then
+            cat logs/package/adguardhome-core/dump.txt >&2
+          fi
+          exit 1
+        fi
+        if ! grep -qx 'CONFIG_PACKAGE_adguardhome-core=y' .config; then
+          echo 'adguardhome-core registered but Kconfig did not select it; inspect dependencies' >&2
+          grep -A 14 -B 2 'config PACKAGE_adguardhome-core' tmp/.config-package.in || true
+          exit 1
+        fi
         missing=0
         for pkg in $(cat required-packages.txt); do
           grep -qx "CONFIG_PACKAGE_${pkg}=y" .config || { echo "Required package missing: $pkg" >&2; missing=1; }
