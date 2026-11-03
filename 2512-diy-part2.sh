@@ -139,6 +139,11 @@ rm -f "$GO_RECIPE" "$GO_HELPER"
 if grep -qx 'CONFIG_PACKAGE_adguardhome-core=y' .config; then
   python3 "$GITHUB_WORKSPACE/scripts/prepare-adguardhome-core.py" || exit 1
 fi
+# 25.12 feeds no longer provide these explicitly selected legacy utilities.
+# Prepare upstream HTTPS source archives with build-time SHA-256 before reindexing.
+if grep -Eq '^CONFIG_PACKAGE_(ndisc6|rdisc6|rdnssd|traceroute6|wrtbwmon)=y$' .config; then
+  python3 "$GITHUB_WORKSPACE/scripts/prepare-network-tools.py" || exit 1
+fi
 # Reindex local changes without moving the pinned feed revision.
 ./scripts/feeds update -i packages
 ./scripts/feeds install -p packages golang golang1.27
