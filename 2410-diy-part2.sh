@@ -42,7 +42,7 @@ sed -i '\|^exit 0$|i sed -i "s,mt7981,filogic,g" /etc/opkg/distfeeds.conf' \
 
 # Inject US locale override script that runs after 99-default-settings-chinese on first boot.
 # Uses a higher sort key (99z) so it executes last among the 99-* scripts.
-OVERRIDE_SCRIPT="package/emortal/default-settings/files/99z-default-settings-us"
+OVERRIDE_SCRIPT="package/base-files/files/etc/uci-defaults/99z-default-settings-us"
 mkdir -p "$(dirname "$OVERRIDE_SCRIPT")"
 cat > "$OVERRIDE_SCRIPT" <<'OVERRIDE_EOF'
 #!/bin/sh
@@ -103,8 +103,27 @@ git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --d
 rm -rf package/luci-app-adguardhome/patches
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
-install -Dm755 "$GITHUB_WORKSPACE/scripts/adguardhome-legacy-config.sh" \
-  package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config || exit 1
+install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft \
+  package/luci-app-adguardhome/root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft || exit 1
+rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft || exit 1
+
+# The MediaTek tree still points ndisc6 1.0.2 at an upstream URL returning HTTP 410.
+# Use the verified public 1.0.8 release; its libc already implements strverscmp.
+NDISC_MK=package/mtk/applications/ndisc/Makefile
+grep -qx 'PKG_VERSION:=1.0.2' "$NDISC_MK" || exit 1
+grep -qx 'PKG_SOURCE_URL:=http://www.remlab.net/files/ndisc6' "$NDISC_MK" || exit 1
+grep -qx 'PKG_MD5SUM:=50cb4c19606cf6ff2b7388e71832f579' "$NDISC_MK" || exit 1
+grep -qx 'TARGET_CFLAGS += -std=c99' "$NDISC_MK" || exit 1
+for patch in 100-favor_bsd.patch 110-strverscmp.patch; do
+  test -f "package/mtk/applications/ndisc/patches/$patch" || exit 1
+done
+sed -i \
+  -e 's/^PKG_VERSION:=1\.0\.2$/PKG_VERSION:=1.0.8/' \
+  -e 's#^PKG_SOURCE_URL:=http://www\.remlab\.net/files/ndisc6$#PKG_SOURCE_URL:=https://www.remlab.net/files/ndisc6#' \
+  -e 's/^PKG_MD5SUM:=50cb4c19606cf6ff2b7388e71832f579$/PKG_HASH:=1f2fb2dc1172770aa5a09d39738a44d8b753cc5e2e25e306ca78682f9fea0b4f/' \
+  -e 's/^TARGET_CFLAGS += -std=c99$/TARGET_CFLAGS += -std=c11/' \
+  "$NDISC_MK"
+rm package/mtk/applications/ndisc/patches/{100-favor_bsd,110-strverscmp}.patch
 
 # Update sing-box and cloudflared in feeds
 pushd feeds/packages
