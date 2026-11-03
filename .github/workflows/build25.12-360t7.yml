@@ -187,19 +187,22 @@ jobs:
         awk -v image="$image" '$2 == image || $2 == "*" image { print }' sha256sums > "$artifact/sha256sums"
         test "$(wc -l < "$artifact/sha256sums")" -eq 1
         sha256sum --strict -c "$artifact/sha256sums"
-        # include/image.mk Image/Manifest uses IMG_PREFIX plus PROFILE_SANITIZED;
-        # match the validated device FIT image, not a target-wide *filogic.manifest.
+        # Package the checksum-verified image before non-essential acceptance checks.
+        # A missing/misnamed manifest must not discard an otherwise built image.
         manifest="${image%-squashfs-sysupgrade.itb}.manifest"
-        test -s "$manifest" || { echo "Missing matching device manifest: $manifest" >&2; exit 1; }
-        for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
-          awk -v pkg="$pkg" '$1 == pkg { found=1 } END { exit !found }' "$manifest" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
-        done
-        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$manifest"; then
-          echo "Forbidden package in public firmware" >&2
-          exit 1
+        if test -s "$manifest"; then
+          # Never publish known forbidden/private packages, even for diagnosis.
+          if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$manifest"; then
+            echo 'Forbidden package in public firmware' >&2
+            exit 1
+          fi
+          cp "$manifest" "$artifact/"
+        else
+          echo "Missing matching device manifest: $manifest (will report after upload)" >&2
         fi
-        cp "$image" "$manifest" "$artifact/"
+        cp "$image" "$artifact/"
         echo "FIRMWARE=$artifact" >> $GITHUB_ENV
+        echo "MANIFEST=$manifest" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
     - name: Upload firmware directory
@@ -209,3 +212,18 @@ jobs:
       with:
         name: ImmortalWrt_25.12_firmware${{ env.DEVICE_NAME }}${{ env.FILE_DATE }}
         path: ${{ env.FIRMWARE }}
+        if-no-files-found: error
+
+    - name: Validate uploaded firmware manifest
+      if: steps.organize.outputs.status == 'success' && !cancelled()
+      run: |
+        cd openwrt/bin/targets/mediatek/filogic
+        test -s "$MANIFEST" || { echo "Missing matching device manifest: $MANIFEST" >&2; exit 1; }
+        for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
+          awk -v pkg="$pkg" '$1 == pkg { found=1 } END { exit !found }' "$MANIFEST" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
+        done
+        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$MANIFEST"; then
+          echo 'Forbidden package in public firmware' >&2
+          exit 1
+        fi
+        echo 'Artifact uploaded and package manifest validated.'
