@@ -16,6 +16,14 @@ class GoToolchainTests(unittest.TestCase):
         self.assertNotIn('adguardhome-legacy-config', script)
         self.assertIn('root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft', script)
         self.assertIn('rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft', script)
+        # The feeds LuCI app selects official adguardhome=y, which conflicts
+        # with our source-built adguardhome-core=y. Replace it before any
+        # feed install refreshes Kconfig for the user-selected packages.
+        self.assertIn('rm "$FEED_ADGUARD_LUCI"', script)
+        self.assertLess(script.index('rm "$FEED_ADGUARD_LUCI"'),
+                        script.index('./scripts/feeds install -p packages golang golang1.27'))
+        self.assertLess(script.index('git clone https://github.com/OneNAS-space/luci-app-adguardhome'),
+                        script.index('./scripts/feeds install -p packages golang golang1.27'))
         # The local package has to exist when feed metadata is rebuilt.
         self.assertEqual(script.count('scripts/prepare-adguardhome-core.py'), 1)
         self.assertLess(script.index('scripts/prepare-adguardhome-core.py'),

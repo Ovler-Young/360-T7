@@ -87,6 +87,26 @@ exit 0
 OVERRIDE_EOF
 chmod +x "$OVERRIDE_SCRIPT"
 
+# Use the OneNAS LuCI service instead of the feeds LuCI package, whose
+# +adguardhome dependency would select a second, official core. Do this
+# before feeds install refreshes Kconfig with the explicit user selections.
+FEED_ADGUARD_LUCI=package/feeds/luci/luci-app-adguardhome
+if [ -L "$FEED_ADGUARD_LUCI" ]; then
+  rm "$FEED_ADGUARD_LUCI"
+elif [ -e "$FEED_ADGUARD_LUCI" ]; then
+  echo "Unexpected non-symlink feed AdGuardHome LuCI package" >&2
+  exit 1
+fi
+git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome || exit 1
+rm -rf package/luci-app-adguardhome/patches
+# Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
+sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
+# fw4 loads /etc/nftables.d snippets inside its inet fw4 table. OneNAS
+# declares a complete 'table inet adguardhome', which belongs at ruleset level.
+install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft \
+  package/luci-app-adguardhome/root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft || exit 1
+rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft || exit 1
+
 # Upgrade the pinned feed's default compiler with matching official 25.12 files.
 GO_REF=$(gh api repos/immortalwrt/packages/commits/openwrt-25.12 --jq .sha)
 [[ "$GO_REF" =~ ^[0-9a-f]{40}$ ]] || exit 1
@@ -155,18 +175,6 @@ cp -r /tmp/luci-app-tailscale-community/luci-app-tailscale-community package/
 # Use the official source-built core with its matching Go toolchain.
 # Its service supports the same state, port, nftables and logging settings.
 ./scripts/feeds install tailscale
-
-# Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
-# Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
-git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome || exit 1
-rm -rf package/luci-app-adguardhome/patches
-# Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
-sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
-# fw4 loads /etc/nftables.d snippets inside its inet fw4 table. OneNAS
-# declares a complete 'table inet adguardhome', which belongs at ruleset level.
-install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft \
-  package/luci-app-adguardhome/root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft || exit 1
-rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft || exit 1
 
 # Update sing-box in feeds
 pushd feeds/packages
