@@ -152,9 +152,18 @@ jobs:
         test "${#rootfs_images[@]}" -eq 1 || { echo 'Expected one 360T7 squashfs rootfs to verify overlays' >&2; exit 1; }
         rootfs="${rootfs_images[0]}"
         test -s "$rootfs"
-        for script in 90-adguardhome-legacy-config 99z-default-settings-us; do
-          unsquashfs -cat "$rootfs" "etc/uci-defaults/$script" | cmp - "files/etc/uci-defaults/$script" || { echo "Missing or modified $script in built rootfs" >&2; exit 1; }
-        done
+        unsquashfs -cat "$rootfs" etc/uci-defaults/99z-default-settings-us | \
+          cmp - files/etc/uci-defaults/99z-default-settings-us || { echo 'Missing or modified US first-boot defaults' >&2; exit 1; }
+        nft_post=usr/share/nftables.d/ruleset-post/99-adguardhome.nft
+        unsquashfs -cat "$rootfs" "$nft_post" > /dev/null || { echo 'Missing AdGuardHome ruleset-post include' >&2; exit 1; }
+        if unsquashfs -cat "$rootfs" etc/nftables.d/99-adguardhome.nft > /dev/null 2>&1; then
+          echo 'AdGuardHome full table include must not be inside fw4 table' >&2
+          exit 1
+        fi
+        if unsquashfs -cat "$rootfs" etc/uci-defaults/90-adguardhome-legacy-config > /dev/null 2>&1; then
+          echo 'Unexpected one-time AdGuardHome migration in public image' >&2
+          exit 1
+        fi
         echo "status=success" >> $GITHUB_OUTPUT
         grep '^CONFIG_TARGET.*DEVICE.*=y' .config | sed -r 's/.*DEVICE_(.*)=y/\1/' > DEVICE_NAME
         [ -s DEVICE_NAME ] && echo "DEVICE_NAME=_$(cat DEVICE_NAME)" >> $GITHUB_ENV

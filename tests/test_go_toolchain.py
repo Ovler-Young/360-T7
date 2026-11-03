@@ -9,12 +9,32 @@ SCRIPT = (ROOT / '2512-diy-part2.sh').read_text().split("<<'PY_TOOLCHAIN'\n", 1)
 
 
 class GoToolchainTests(unittest.TestCase):
-    def test_tailscale_tracks_supported_release_and_migration_overlay(self):
+    def test_tailscale_tracks_supported_release_and_adguard_fw4_layout(self):
         script = (ROOT / '2512-diy-part2.sh').read_text()
         self.assertIn('update_release_package tailscale tailscale/tailscale || exit 1', script)
         self.assertIn('update_release_package sing-box SagerNet/sing-box || exit 1', script)
-        self.assertIn('files/etc/uci-defaults/90-adguardhome-legacy-config || exit 1', script)
-        self.assertNotIn('package/luci-app-adguardhome/root/etc/uci-defaults/90-adguardhome-legacy-config', script)
+        self.assertNotIn('adguardhome-legacy-config', script)
+        self.assertIn('root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft', script)
+        self.assertIn('rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft', script)
+        workflow = (ROOT / '.github/workflows/build25.12-360t7.yml').read_text()
+        self.assertIn('etc/uci-defaults/99z-default-settings-us', workflow)
+        self.assertIn('Unexpected one-time AdGuardHome migration in public image', workflow)
+        self.assertIn('Missing AdGuardHome ruleset-post include', workflow)
+
+    def test_adguard_nft_file_moves_outside_fw4_table(self):
+        script = (ROOT / '2512-diy-part2.sh').read_text()
+        commands = script.split('install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft', 1)[1]
+        commands = 'install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft' + commands.split('\n\n', 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            legacy = root / 'package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft'
+            legacy.parent.mkdir(parents=True)
+            legacy.write_text('include "/etc/adguardhome.nft"\n')
+            result = subprocess.run(['bash', '-e', '-c', commands], cwd=root, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(legacy.exists())
+            new = root / 'package/luci-app-adguardhome/root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft'
+            self.assertEqual(new.read_text(), 'include "/etc/adguardhome.nft"\n')
 
     def test_default_upgrade_and_security_floor(self):
         for patch in (2, 3, 4):
