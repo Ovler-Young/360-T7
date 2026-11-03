@@ -143,6 +143,16 @@ jobs:
         test "$missing" -eq 0
         ! grep -qx 'CONFIG_PACKAGE_librespeed-cli-rust=y' .config || { echo 'Unexpected Rust LibreSpeed package' >&2; exit 1; }
         ! grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config || { echo 'Unexpected proprietary MTK Wi-Fi driver' >&2; exit 1; }
+        # DUMP=1 feed metadata scans do not expand install recipes. Catch
+        # malformed custom package Makefiles before the hours-long world build.
+        for package in ndisc6 wrtbwmon; do
+          status=0
+          make -r -s -C "package/$package" -q compile || status=$?
+          if test "$status" -gt 1; then
+            echo "Custom $package Makefile cannot be parsed for compile" >&2
+            exit 1
+          fi
+        done
         make download -j8
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;

@@ -4,6 +4,7 @@ from io import BytesIO
 import importlib.util
 import os
 from pathlib import Path
+import re
 import tarfile
 import unittest
 
@@ -47,6 +48,22 @@ class PublicNetworkToolsTests(unittest.TestCase):
                         script.index("./scripts/feeds update -i packages"))
         self.assertTrue((ROOT / "packages/ndisc6/Makefile").exists())
         self.assertTrue((ROOT / "packages/wrtbwmon/Makefile").exists())
+
+    def test_package_install_commands_are_tab_indented(self):
+        # DUMP=1 package scans cannot detect bad Make recipe indentation.
+        # The actual compile expands BuildPackage and fails with "missing separator".
+        for name in ("ndisc6", "wrtbwmon"):
+            recipe = (ROOT / "packages" / name / "Makefile").read_text()
+            blocks = re.findall(
+                r"^define Package/[^\n]+/install\n(.*?)^endef$",
+                recipe, re.M | re.S,
+            )
+            self.assertTrue(blocks, name)
+            for block in blocks:
+                for command in block.splitlines():
+                    if command.strip():
+                        self.assertTrue(command.startswith("\t"),
+                                        f"{name} install command needs a Make recipe tab: {command}")
 
 
 if __name__ == "__main__":

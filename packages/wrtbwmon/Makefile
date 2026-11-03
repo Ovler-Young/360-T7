@@ -24,12 +24,12 @@ define Build/Compile
 endef
 
 define Package/wrtbwmon/install
-  $(INSTALL_DIR) $(1)/usr/sbin $(1)/usr/share/wrtbwmon $(1)/etc/init.d
-  $(INSTALL_BIN) $(PKG_BUILD_DIR)/wrtbwmon $(1)/usr/sbin/
-  $(INSTALL_DATA) $(PKG_BUILD_DIR)/readDB.awk $(1)/usr/sbin/
-  $(INSTALL_DATA) $(PKG_BUILD_DIR)/usage.htm1 $(1)/usr/share/wrtbwmon/
-  $(INSTALL_DATA) $(PKG_BUILD_DIR)/usage.htm2 $(1)/usr/share/wrtbwmon/
-  $(INSTALL_BIN) $(PKG_BUILD_DIR)/init/wrtbwmon $(1)/etc/init.d/
+	$(INSTALL_DIR) $(1)/usr/sbin $(1)/usr/share/wrtbwmon $(1)/etc/init.d
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/wrtbwmon $(1)/usr/sbin/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/readDB.awk $(1)/usr/sbin/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usage.htm1 $(1)/usr/share/wrtbwmon/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usage.htm2 $(1)/usr/share/wrtbwmon/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/init/wrtbwmon $(1)/etc/init.d/
 endef
 
 $(eval $(call BuildPackage,wrtbwmon))

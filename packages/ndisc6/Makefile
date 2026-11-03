@@ -40,25 +40,25 @@ define Package/traceroute6
 endef
 
 define Package/ndisc6/install
-  $(INSTALL_DIR) $(1)/usr/bin
-  $(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/ndisc6 $(1)/usr/bin/
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/ndisc6 $(1)/usr/bin/
 endef
 
 define Package/rdisc6/install
-  $(INSTALL_DIR) $(1)/usr/bin
-  $(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/rdisc6 $(1)/usr/bin/
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/rdisc6 $(1)/usr/bin/
 endef
 
 define Package/rdnssd/install
-  $(INSTALL_DIR) $(1)/usr/sbin
-  $(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/rdnssd $(1)/usr/sbin/
+	$(INSTALL_DIR) $(1)/usr/sbin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/sbin/rdnssd $(1)/usr/sbin/
 endef
 
 define Package/traceroute6/install
-  $(INSTALL_DIR) $(1)/usr/bin
-  $(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/rltraceroute6 $(1)/usr/bin/
-  $(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/tracert6 $(1)/usr/bin/
-  $(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/tcptraceroute6 $(1)/usr/bin/
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/rltraceroute6 $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/tracert6 $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/tcptraceroute6 $(1)/usr/bin/
 endef
 
 $(eval $(call BuildPackage,ndisc6))
