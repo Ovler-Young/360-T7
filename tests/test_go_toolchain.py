@@ -35,6 +35,9 @@ class GoToolchainTests(unittest.TestCase):
         config = (ROOT / '2512-360t7.config').read_text()
         self.assertIn('# CONFIG_PACKAGE_default-settings-chn is not set', config)
         self.assertNotIn('CONFIG_PACKAGE_default-settings-chn=y', config)
+        # LuCI translations have a separate Kconfig language selector; they
+        # must not depend on the Chinese distribution's first-boot package.
+        self.assertIn('CONFIG_LUCI_LANG_zh_Hans=y', config)
         self.assertIn('Unexpected one-time AdGuardHome migration in public image', workflow)
         self.assertIn('Missing AdGuardHome ruleset-post include', workflow)
 
