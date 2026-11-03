@@ -30,6 +30,11 @@ class GoToolchainTests(unittest.TestCase):
                         script.index('./scripts/feeds update -i packages'))
         workflow = (ROOT / '.github/workflows/build25.12-360t7.yml').read_text()
         self.assertIn('etc/uci-defaults/99z-default-settings-us', workflow)
+        self.assertIn('Unexpected Chinese first-boot script in US firmware', workflow)
+        self.assertNotIn('99-default-settings-chinese', script)
+        config = (ROOT / '2512-360t7.config').read_text()
+        self.assertIn('# CONFIG_PACKAGE_default-settings-chn is not set', config)
+        self.assertNotIn('CONFIG_PACKAGE_default-settings-chn=y', config)
         self.assertIn('Unexpected one-time AdGuardHome migration in public image', workflow)
         self.assertIn('Missing AdGuardHome ruleset-post include', workflow)
 

@@ -143,6 +143,7 @@ jobs:
         test "$missing" -eq 0
         ! grep -qx 'CONFIG_PACKAGE_librespeed-cli-rust=y' .config || { echo 'Unexpected Rust LibreSpeed package' >&2; exit 1; }
         ! grep -qx 'CONFIG_PACKAGE_kmod-mt_wifi=y' .config || { echo 'Unexpected proprietary MTK Wi-Fi driver' >&2; exit 1; }
+        ! grep -qx 'CONFIG_PACKAGE_default-settings-chn=y' .config || { echo 'Unexpected Chinese first-boot defaults package' >&2; exit 1; }
         # DUMP=1 feed metadata scans do not expand install recipes. Catch
         # malformed custom package Makefiles before the hours-long world build.
         for package in ndisc6 wrtbwmon; do
@@ -181,6 +182,10 @@ jobs:
         test -s "$rootfs"
         unsquashfs -cat "$rootfs" etc/uci-defaults/99z-default-settings-us | \
           cmp - files/etc/uci-defaults/99z-default-settings-us || { echo 'Missing or modified US first-boot defaults' >&2; exit 1; }
+        if unsquashfs -cat "$rootfs" etc/uci-defaults/99-default-settings-chinese > /dev/null 2>&1; then
+          echo 'Unexpected Chinese first-boot script in US firmware' >&2
+          exit 1
+        fi
         nft_post=usr/share/nftables.d/ruleset-post/99-adguardhome.nft
         unsquashfs -cat "$rootfs" "$nft_post" > /dev/null || { echo 'Missing AdGuardHome ruleset-post include' >&2; exit 1; }
         if unsquashfs -cat "$rootfs" etc/nftables.d/99-adguardhome.nft > /dev/null 2>&1; then
@@ -228,7 +233,7 @@ jobs:
         manifest="${image%-squashfs-sysupgrade.itb}.manifest"
         if test -s "$manifest"; then
           # Never publish known forbidden/private packages, even for diagnosis.
-          if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$manifest"; then
+          if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome|default-settings-chn) ' "$manifest"; then
             echo 'Forbidden package in public firmware' >&2
             exit 1
           fi
@@ -260,7 +265,7 @@ jobs:
           # runtime package (e.g. libustream-openssl20201210) in the image.
           awk -v pkg="$pkg" '$1 == pkg || (pkg == "libustream-openssl" && $1 ~ /^libustream-openssl[0-9]+$/) { found=1 } END { exit !found }' "$MANIFEST" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
         done
-        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$MANIFEST"; then
+        if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome|default-settings-chn) ' "$MANIFEST"; then
           echo 'Forbidden package in public firmware' >&2
           exit 1
         fi

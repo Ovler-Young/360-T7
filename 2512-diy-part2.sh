@@ -46,17 +46,14 @@ sed -i 's/luci-theme-material/luci-theme-argon/g' feeds/luci/collections/luci/Ma
 # Modify filename, add date prefix
 sed -i 's|IMG_PREFIX:=|IMG_PREFIX:=$(shell TZ="America/New_York" date +"%Y%m%d")-25.12|' include/image.mk
 
-# Insert lines before the last line in 99-default-settings-chinese. For Modify apk url, change mt7981 to filogic
-sed -i '\|^exit 0$|i sed -i "s,mt7981,filogic,g" /etc/apk/repositories.d/distfeeds.list' \
-    package/emortal/default-settings/files/99-default-settings-chinese
-
-# Inject US locale override script that runs after 99-default-settings-chinese on first boot.
-# Uses a higher sort key (99z) so it executes last among the 99-* scripts.
+# Use general ImmortalWrt defaults plus a single US locale customization.
+# Do not install default-settings-chn: it writes Chinese NTP/mirror settings.
+# Use a late sort key (99z) so US settings run after distribution defaults.
 OVERRIDE_SCRIPT="files/etc/uci-defaults/99z-default-settings-us"
 mkdir -p "$(dirname "$OVERRIDE_SCRIPT")"
 cat > "$OVERRIDE_SCRIPT" <<'OVERRIDE_EOF'
 #!/bin/sh
-# Override locale settings applied by 99-default-settings-chinese:
+# US first-boot locale settings:
 # - Timezone: America/New_York (UTC-5/UTC-4 DST)
 # - NTP: Cloudflare + NIST (no Chinese servers)
 # - apk mirror: restored to official immortalwrt.org

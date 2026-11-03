@@ -137,6 +137,13 @@ class FirmwareManifestTests(unittest.TestCase):
         self.assertIsNone(validate)
         self.assertIn("Forbidden package in public firmware", stage.stderr)
 
+    def test_chinese_firstboot_package_blocks_public_upload(self):
+        stage, validate = self.run_steps(
+            manifest_content='adguardhome-core - 1\ncloudflared - 1\ndefault-settings-chn - 29\n')
+        self.assertNotEqual(stage.returncode, 0)
+        self.assertIsNone(validate)
+        self.assertIn('Forbidden package in public firmware', stage.stderr)
+
     def test_checksum_mismatch_blocks_upload(self):
         stage, validate = self.run_steps(checksum_valid=False)
         self.assertNotEqual(stage.returncode, 0)
