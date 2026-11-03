@@ -76,7 +76,7 @@ jobs:
         toolchain: 'true'
         skip: 'true'
         prefix: '${{ github.workspace }}/openwrt'
-        mixkey: 'mediatek-filogic-base'
+        mixkey: 'mediatek-filogic-base-go127'
 
     - name: Load custom feeds
       run: |
@@ -90,7 +90,7 @@ jobs:
          cd openwrt
          ./scripts/feeds update -a
          rm -rf feeds/packages/lang/golang
-         git clone https://github.com/kenzok8/golang feeds/packages/lang/golang
+         git clone --depth=1 -b 1.27 https://github.com/kenzok8/golang feeds/packages/lang/golang
 
 
     - name: Install feeds

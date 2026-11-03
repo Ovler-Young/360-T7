@@ -10,6 +10,18 @@
 # See /LICENSE for more information.
 #
 
+SMP_HOTPLUG="target/linux/mediatek/filogic/base-files/etc/hotplug.d/iface/30-ext-devices-rps-setting"
+if [ ! -f "$SMP_HOTPLUG" ]; then
+  echo "Missing upstream MediaTek SMP iface hotplug script" >&2
+  exit 1
+fi
+sed -i '/^NPROCS=/i\
+case "$ACTION" in\
+  ifup|ifdown) ;;\
+  *) exit 0 ;;\
+esac\
+' "$SMP_HOTPLUG"
+
 # Modify default IP
 sed -i 's/192.168.6.1/192.168.10.1/g' package/base-files/files/bin/config_generate
 
@@ -30,7 +42,7 @@ sed -i '\|^exit 0$|i sed -i "s,mt7981,filogic,g" /etc/opkg/distfeeds.conf' \
 
 # Inject US locale override script that runs after 99-default-settings-chinese on first boot.
 # Uses a higher sort key (99z) so it executes last among the 99-* scripts.
-OVERRIDE_SCRIPT="package/emortal/default-settings/files/99z-default-settings-us"
+OVERRIDE_SCRIPT="package/base-files/files/etc/uci-defaults/99z-default-settings-us"
 mkdir -p "$(dirname "$OVERRIDE_SCRIPT")"
 cat > "$OVERRIDE_SCRIPT" <<'OVERRIDE_EOF'
 #!/bin/sh
@@ -87,9 +99,31 @@ sed -i '/\$(CP).*base\/tailscaled/d' "$TAILSCALE_MK"
 
 # Add luci-app-adguardhome (nft version, downloads AdGuardHome binary on first run)
 # Note: do NOT install the feeds adguardhome package alongside this to avoid dual procd services
-git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=master --depth=1 package/luci-app-adguardhome
+git clone https://github.com/OneNAS-space/luci-app-adguardhome --branch=main --depth=1 package/luci-app-adguardhome || exit 1
+rm -rf package/luci-app-adguardhome/patches
 # Fix luci-app-adguardhome recursive dependency (tar + xz cycle)
 sed -i 's/+wget-ssl +tar +xz/+wget-ssl +tar/' package/luci-app-adguardhome/Makefile
+install -Dm644 package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft \
+  package/luci-app-adguardhome/root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft || exit 1
+rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft || exit 1
+
+# The MediaTek tree still points ndisc6 1.0.2 at an upstream URL returning HTTP 410.
+# Use the verified public 1.0.8 release; its libc already implements strverscmp.
+NDISC_MK=package/mtk/applications/ndisc/Makefile
+grep -qx 'PKG_VERSION:=1.0.2' "$NDISC_MK" || exit 1
+grep -qx 'PKG_SOURCE_URL:=http://www.remlab.net/files/ndisc6' "$NDISC_MK" || exit 1
+grep -qx 'PKG_MD5SUM:=50cb4c19606cf6ff2b7388e71832f579' "$NDISC_MK" || exit 1
+grep -qx 'TARGET_CFLAGS += -std=c99' "$NDISC_MK" || exit 1
+for patch in 100-favor_bsd.patch 110-strverscmp.patch; do
+  test -f "package/mtk/applications/ndisc/patches/$patch" || exit 1
+done
+sed -i \
+  -e 's/^PKG_VERSION:=1\.0\.2$/PKG_VERSION:=1.0.8/' \
+  -e 's#^PKG_SOURCE_URL:=http://www\.remlab\.net/files/ndisc6$#PKG_SOURCE_URL:=https://www.remlab.net/files/ndisc6#' \
+  -e 's/^PKG_MD5SUM:=50cb4c19606cf6ff2b7388e71832f579$/PKG_HASH:=1f2fb2dc1172770aa5a09d39738a44d8b753cc5e2e25e306ca78682f9fea0b4f/' \
+  -e 's/^TARGET_CFLAGS += -std=c99$/TARGET_CFLAGS += -std=c11/' \
+  "$NDISC_MK"
+rm package/mtk/applications/ndisc/patches/{100-favor_bsd,110-strverscmp}.patch
 
 # Update sing-box and cloudflared in feeds
 pushd feeds/packages
@@ -99,25 +133,53 @@ pushd feeds/packages
 sed -i 's/,with_tailscale//g' net/sing-box/Makefile
 sed -i '/CONFIG_SING_BOX_TINY_BUILD_TAILSCALE/d' net/sing-box/Makefile
 
-singbox_version=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep -oP '"tag_name":\s*"v\K[^"]+')
-if [ -n "$singbox_version" ]; then
-  sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$singbox_version/" net/sing-box/Makefile
-  sed -i "s/PKG_HASH:=.*/PKG_HASH:=skip/" net/sing-box/Makefile
-  sed -i 's/.*PKG_MIRROR_HASH.*/#&/' net/sing-box/Makefile
-  echo "==> sing-box updated to $singbox_version"
-else
-  echo "==> Failed to fetch sing-box version, skipping"
-fi
+update_release_package() {
+  local pkg="$1" repo="$2" mk="net/$1/Makefile"
+  local tag version archive hash
 
+  if [ ! -f "$mk" ] || ! grep -Fq "https://codeload.github.com/$repo/tar.gz/" "$mk"; then
+    echo "Unexpected source URL for $pkg: $mk" >&2
+    return 1
+  fi
+
+  tag=$(gh api "repos/$repo/releases/latest" --jq .tag_name) || return 1
+  if [[ ! "$tag" =~ ^v?[0-9][0-9A-Za-z._-]*$ ]]; then
+    echo "Invalid release tag for $pkg: $tag" >&2
+    return 1
+  fi
+  version="${tag#v}"
+
+  archive=$(mktemp) || return 1
+  if ! curl -fsSL --retry 3 "https://codeload.github.com/$repo/tar.gz/$tag?" -o "$archive"; then
+    rm -f "$archive"
+    return 1
+  fi
+  if ! tar -tzf "$archive" >/dev/null; then
+    rm -f "$archive"
+    return 1
+  fi
+  hash=$(sha256sum "$archive") || { rm -f "$archive"; return 1; }
+  hash="${hash%% *}"
+  rm -f "$archive"
+  if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Invalid source hash for $pkg" >&2
+    return 1
+  fi
+
+  sed -i \
+    -e "s/^PKG_VERSION:=.*/PKG_VERSION:=$version/" \
+    -e "s/^PKG_HASH:=.*/PKG_HASH:=$hash/" "$mk" || return 1
+  grep -qx "PKG_VERSION:=$version" "$mk" && \
+    grep -qx "PKG_HASH:=$hash" "$mk" || return 1
+  echo "==> $pkg updated to $version (SHA-256: $hash)"
+}
+
+update_release_package sing-box SagerNet/sing-box || exit 1
 # cloudflared: update to latest release (tag has no 'v' prefix)
-cloudflared_version=$(curl -s "https://api.github.com/repos/cloudflare/cloudflared/releases/latest" | grep -oP '"tag_name":\s*"\K[^"]+')
-if [ -n "$cloudflared_version" ]; then
-  sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$cloudflared_version/" net/cloudflared/Makefile
-  sed -i "s/PKG_HASH:=.*/PKG_HASH:=skip/" net/cloudflared/Makefile
-  sed -i 's/.*PKG_MIRROR_HASH.*/#&/' net/cloudflared/Makefile
-  echo "==> cloudflared updated to $cloudflared_version"
-else
-  echo "==> Failed to fetch cloudflared version, skipping"
-fi
+update_release_package cloudflared cloudflare/cloudflared || exit 1
 
 popd
+
+if grep -qx 'CONFIG_PACKAGE_adguardhome-core=y' .config; then
+  python3 "$GITHUB_WORKSPACE/scripts/prepare-adguardhome-core.py" || exit 1
+fi
