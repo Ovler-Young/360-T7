@@ -105,6 +105,12 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: |
         # [ -e files ] && mv files openwrt/files
+        # Only user-selected packages belong in the final image manifest gate.
+        # The feed setup may select build dependencies (e.g. libatomic) that
+        # are not necessarily installed in the firmware image.
+        sed -n 's/^CONFIG_PACKAGE_\(.*\)=y$/\1/p' "$CONFIG_FILE" | \
+          grep -vE '^(dnsmasq_full_|TAR_)' > openwrt/required-packages.txt
+        test -s openwrt/required-packages.txt
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH
         cd openwrt
@@ -114,9 +120,8 @@ jobs:
       id: package
       run: |
         cd openwrt
-        # Save explicit package intent before Kconfig can discard unavailable symbols.
-        sed -n 's/^CONFIG_PACKAGE_\(.*\)=y$/\1/p' .config | \
-          grep -vE '^(dnsmasq_full_|TAR_)' > required-packages.txt
+        # Required packages were captured from the explicit 25.12 config,
+        # before feed/setup-generated Kconfig dependencies are applied.
         test -s required-packages.txt
         make defconfig
         missing=0

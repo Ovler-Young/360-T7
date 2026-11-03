@@ -31,6 +31,23 @@ class FirmwareManifestTests(unittest.TestCase):
                         source.index("    - name: Validate uploaded firmware manifest"))
         self.assertIn("if-no-files-found: error", source)
 
+    def test_required_packages_come_from_explicit_config_not_generated_dependencies(self):
+        source = WORKFLOW.read_text()
+        capture = source.split('    - name: Load custom configuration\n', 1)[1].split('\n    - name:', 1)[0]
+        download = source.split('    - name: Download package\n', 1)[1].split('\n    - name:', 1)[0]
+        self.assertIn('"$CONFIG_FILE"', capture)
+        self.assertIn('> openwrt/required-packages.txt', capture)
+        self.assertNotIn('> required-packages.txt', download)
+        # libatomic was selected by Kconfig during the previous CI run,
+        # but is not an explicit package selection in 2512-360t7.config.
+        config = (ROOT / '2512-360t7.config').read_text()
+        required = {line.removeprefix('CONFIG_PACKAGE_').removesuffix('=y')
+                    for line in config.splitlines()
+                    if line.startswith('CONFIG_PACKAGE_') and line.endswith('=y')}
+        self.assertNotIn('libatomic', required)
+        self.assertTrue({'tailscale', 'sing-box', 'cloudflared', 'adguardhome-core',
+                         'luci-app-adguardhome', 'kmod-mt7915e', 'apk-openssl'} <= required)
+
     def run_steps(self, manifest_name=MANIFEST, manifest_content=None, checksum_valid=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
