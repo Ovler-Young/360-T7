@@ -256,7 +256,9 @@ jobs:
         cd openwrt/bin/targets/mediatek/filogic
         test -s "$MANIFEST" || { echo "Missing matching device manifest: $MANIFEST" >&2; exit 1; }
         for pkg in $(cat "$GITHUB_WORKSPACE/openwrt/required-packages.txt"); do
-          awk -v pkg="$pkg" '$1 == pkg { found=1 } END { exit !found }' "$MANIFEST" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
+          # OpenWrt's libustream-openssl Kconfig symbol installs a versioned
+          # runtime package (e.g. libustream-openssl20201210) in the image.
+          awk -v pkg="$pkg" '$1 == pkg || (pkg == "libustream-openssl" && $1 ~ /^libustream-openssl[0-9]+$/) { found=1 } END { exit !found }' "$MANIFEST" || { echo "Missing package in manifest: $pkg" >&2; exit 1; }
         done
         if grep -Ei '^(http-proxy-ipv6-pool|librespeed-cli-rust|adguardhome) ' "$MANIFEST"; then
           echo 'Forbidden package in public firmware' >&2

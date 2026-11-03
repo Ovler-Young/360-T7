@@ -51,7 +51,8 @@ class FirmwareManifestTests(unittest.TestCase):
         self.assertTrue({'tailscale', 'sing-box', 'cloudflared', 'adguardhome-core',
                          'luci-app-adguardhome', 'kmod-mt7915e', 'apk-openssl'} <= required)
 
-    def run_steps(self, manifest_name=MANIFEST, manifest_content=None, checksum_valid=True):
+    def run_steps(self, manifest_name=MANIFEST, manifest_content=None, checksum_valid=True,
+                  required_packages="adguardhome-core\ncloudflared\n"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / "openwrt/bin/targets/mediatek/filogic"
@@ -60,7 +61,7 @@ class FirmwareManifestTests(unittest.TestCase):
             (target / IMAGE).write_bytes(data)
             digest = hashlib.sha256(data).hexdigest() if checksum_valid else "0" * 64
             (target / "sha256sums").write_text(f"{digest}  {IMAGE}\n")
-            (root / "openwrt/required-packages.txt").write_text("adguardhome-core\ncloudflared\n")
+            (root / "openwrt/required-packages.txt").write_text(required_packages)
             if manifest_content is None:
                 manifest_content = "adguardhome-core - 1\ncloudflared - 1\n"
             if manifest_name:
@@ -111,6 +112,23 @@ class FirmwareManifestTests(unittest.TestCase):
         self.assertEqual(stage.returncode, 0, stage.stderr)
         self.assertNotEqual(validate.returncode, 0)
         self.assertIn("Missing package in manifest: adguardhome-core", validate.stderr)
+
+    def test_versioned_libustream_openssl_satisfies_explicit_selection(self):
+        stage, validate = self.run_steps(
+            required_packages="adguardhome-core\ncloudflared\nlibustream-openssl\n",
+            manifest_content="adguardhome-core - 1\ncloudflared - 1\n"
+                             "libustream-openssl20201210 - 2026.03.01-r1\n")
+        self.assertEqual(stage.returncode, 0, stage.stderr)
+        self.assertEqual(validate.returncode, 0, validate.stderr)
+
+    def test_libustream_alias_does_not_accept_unversioned_lookalikes(self):
+        stage, validate = self.run_steps(
+            required_packages="adguardhome-core\ncloudflared\nlibustream-openssl\n",
+            manifest_content="adguardhome-core - 1\ncloudflared - 1\n"
+                             "libustream-openssl-fake - 1\n")
+        self.assertEqual(stage.returncode, 0, stage.stderr)
+        self.assertNotEqual(validate.returncode, 0)
+        self.assertIn("Missing package in manifest: libustream-openssl", validate.stderr)
 
     def test_forbidden_package_blocks_public_upload(self):
         stage, validate = self.run_steps(
