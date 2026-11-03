@@ -134,6 +134,11 @@ values_path.write_text(values)
 print(f"==> Default Go compiler: {minor}.{patch}")
 PY_TOOLCHAIN
 rm -f "$GO_RECIPE" "$GO_HELPER"
+# Register the source-built AdGuardHome core before package metadata is
+# regenerated; otherwise its explicit Kconfig selection gets discarded.
+if grep -qx 'CONFIG_PACKAGE_adguardhome-core=y' .config; then
+  python3 "$GITHUB_WORKSPACE/scripts/prepare-adguardhome-core.py" || exit 1
+fi
 # Reindex local changes without moving the pinned feed revision.
 ./scripts/feeds update -i packages
 ./scripts/feeds install -p packages golang golang1.27
@@ -269,7 +274,3 @@ update_release_package tailscale tailscale/tailscale || exit 1
 popd
 
 python3 "$GITHUB_WORKSPACE/scripts/prepare-cloudflared-prebuilt.py" || exit 1
-
-if grep -qx 'CONFIG_PACKAGE_adguardhome-core=y' .config; then
-  python3 "$GITHUB_WORKSPACE/scripts/prepare-adguardhome-core.py" || exit 1
-fi

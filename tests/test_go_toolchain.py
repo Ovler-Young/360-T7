@@ -16,6 +16,10 @@ class GoToolchainTests(unittest.TestCase):
         self.assertNotIn('adguardhome-legacy-config', script)
         self.assertIn('root/usr/share/nftables.d/ruleset-post/99-adguardhome.nft', script)
         self.assertIn('rm package/luci-app-adguardhome/root/etc/nftables.d/99-adguardhome.nft', script)
+        # The local package has to exist when feed metadata is rebuilt.
+        self.assertEqual(script.count('scripts/prepare-adguardhome-core.py'), 1)
+        self.assertLess(script.index('scripts/prepare-adguardhome-core.py'),
+                        script.index('./scripts/feeds update -i packages'))
         workflow = (ROOT / '.github/workflows/build25.12-360t7.yml').read_text()
         self.assertIn('etc/uci-defaults/99z-default-settings-us', workflow)
         self.assertIn('Unexpected one-time AdGuardHome migration in public image', workflow)

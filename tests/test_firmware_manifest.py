@@ -45,6 +45,9 @@ class FirmwareManifestTests(unittest.TestCase):
                     for line in config.splitlines()
                     if line.startswith('CONFIG_PACKAGE_') and line.endswith('=y')}
         self.assertNotIn('libatomic', required)
+        # ImmortalWrt 25.12 uses autocore, not the obsolete autocore-arm symbol.
+        self.assertIn('autocore', required)
+        self.assertNotIn('autocore-arm', required)
         self.assertTrue({'tailscale', 'sing-box', 'cloudflared', 'adguardhome-core',
                          'luci-app-adguardhome', 'kmod-mt7915e', 'apk-openssl'} <= required)
 
