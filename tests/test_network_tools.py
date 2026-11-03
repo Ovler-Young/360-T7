@@ -49,6 +49,12 @@ class PublicNetworkToolsTests(unittest.TestCase):
         self.assertTrue((ROOT / "packages/ndisc6/Makefile").exists())
         self.assertTrue((ROOT / "packages/wrtbwmon/Makefile").exists())
 
+    def test_ci_package_preflight_provides_openwrt_topdir(self):
+        # A make -C child has no implicit TOPDIR; without it OpenWrt
+        # tries to include /package.mk and falsely fails the preflight.
+        workflow = (ROOT / '.github/workflows/build25.12-360t7.yml').read_text()
+        self.assertIn('make -r -s -C "package/$package" TOPDIR="$PWD" -q compile', workflow)
+
     def test_package_install_commands_are_tab_indented(self):
         # DUMP=1 package scans cannot detect bad Make recipe indentation.
         # The actual compile expands BuildPackage and fails with "missing separator".

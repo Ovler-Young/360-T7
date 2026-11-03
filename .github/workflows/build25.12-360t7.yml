@@ -147,7 +147,7 @@ jobs:
         # malformed custom package Makefiles before the hours-long world build.
         for package in ndisc6 wrtbwmon; do
           status=0
-          make -r -s -C "package/$package" -q compile || status=$?
+          make -r -s -C "package/$package" TOPDIR="$PWD" -q compile || status=$?
           if test "$status" -gt 1; then
             echo "Custom $package Makefile cannot be parsed for compile" >&2
             exit 1
